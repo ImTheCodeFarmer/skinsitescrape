@@ -12,6 +12,8 @@ export type RunOptions = {
   dryRun: boolean;
   /** Overrides every computed cutoff. */
   until: Date | null;
+  /** Start from this legacy id instead of the saved cursor (the saved cursor still only moves forward). */
+  from: bigint | null;
 };
 
 export type Deps = { legacy: Legacy; db: Db; sink: Sink; log: Logger; stopRequested: () => boolean };
@@ -67,7 +69,7 @@ export async function runSource(src: Source, opts: RunOptions, deps: Deps): Prom
   const tailCol = src.tailCol ?? "created_at";
 
   const progress = await loadProgress(db, src.name);
-  let cursor = progress.cursor;
+  let cursor = opts.from ?? progress.cursor;
 
   const cutoffs: Record<string, Date | null> = {};
   for (const [key, spec] of Object.entries(src.cutoffs ?? {})) {
@@ -102,8 +104,14 @@ export async function runSource(src: Source, opts: RunOptions, deps: Deps): Prom
     await src.handle(rows, ctx);
     spent.handleMs += Date.now() - t;
     t = Date.now();
+    const errorsBefore = sink.counts.errors;
     await sink.flush();
     spent.flushMs += Date.now() - t;
+    if (sink.counts.errors > errorsBefore) {
+      // Rows from this batch were dropped. Stop here with the cursor unchanged so a rerun retries them.
+      log.error({ cursor: String(cursor), table: sink.lastError?.table }, "batch lost to a failed write; stopping so it can be retried");
+      throw new Error(`write to ${sink.lastError?.table} failed at cursor ${cursor}: ${(sink.lastError?.err as Error)?.message}`);
+    }
     cursor = BigInt(String(rows[rows.length - 1][idCol]));
     read += rows.length;
     batches++;

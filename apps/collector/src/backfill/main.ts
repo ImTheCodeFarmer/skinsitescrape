@@ -8,6 +8,10 @@
  *   pnpm --filter collector backfill -- --list       # sources and saved progress
  *   pnpm --filter collector backfill -- --sources rustypot --max-batches 5 --dry-run
  *   pnpm --filter collector backfill -- --refresh-caggs
+ *   pnpm --filter collector backfill -- --sources rustypot --from 2100000   # restart the walk at a legacy id
+ *
+ * A failed write stops the run with the cursor left before the failed batch,
+ * so a rerun retries exactly the rows that were dropped.
  *
  * Env: DATABASE_URL (target), LEGACY_DB_HOST/NAME/USER/PASSWORD (+ optional
  * LEGACY_DB_PORT, LEGACY_DB_SSL=true), BACKFILL_BATCH, BACKFILL_PAUSE_MS,
@@ -34,6 +38,7 @@ function parseArgs(argv: string[]): Args {
     maxBatches: 0,
     dryRun: false,
     until: null,
+    from: null,
     list: false,
     reset: false,
     refreshOnly: false,
@@ -49,6 +54,7 @@ function parseArgs(argv: string[]): Args {
     else if (k === "--tail") a.tailMinutes = Number(v());
     else if (k === "--max-batches") a.maxBatches = Number(v());
     else if (k === "--until") a.until = new Date(v());
+    else if (k === "--from") a.from = BigInt(v());
     else if (k === "--dry-run") a.dryRun = true;
     else if (k === "--list") a.list = true;
     else if (k === "--reset") a.reset = true;
@@ -99,7 +105,8 @@ process.on("SIGINT", () => onSignal("SIGINT"));
 process.on("SIGTERM", () => onSignal("SIGTERM"));
 
 const sink = new Sink(db, { recordRaw: false, dryRun: args.dryRun });
-const legacy = connectLegacy();
+// Refresh-only runs never touch the legacy database.
+const legacy = args.refreshOnly ? null : connectLegacy();
 let allDone = true;
 
 try {
@@ -107,7 +114,7 @@ try {
     log.info({ sources: wanted, batch: args.batch, pauseMs: args.pauseMs, tailMinutes: args.tailMinutes, dryRun: args.dryRun, until: args.until }, "backfill starting");
     for (const name of wanted) {
       if (stop) break;
-      const done = await runSource(byName.get(name)!, args, { legacy, db, sink, log, stopRequested: () => stop });
+      const done = await runSource(byName.get(name)!, args, { legacy: legacy!, db, sink, log, stopRequested: () => stop });
       allDone &&= done;
     }
     await sink.close();
@@ -121,7 +128,7 @@ try {
   }
 } finally {
   await sink.close();
-  await legacy.end({ timeout: 5 });
+  await legacy?.end({ timeout: 5 });
   await close();
 }
 process.exit(stop && !allDone ? 130 : 0);

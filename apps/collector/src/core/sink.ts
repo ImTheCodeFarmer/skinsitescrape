@@ -91,8 +91,10 @@ export class Sink {
   readonly recordRaw: boolean;
   /** Buffer and count, but never write. Used by the legacy backfill's dry run. */
   readonly dryRun: boolean;
-  /** Rows handed to doFlush so far, per table. */
-  readonly counts = { raw: 0, players: 0, bets: 0, coinflips: 0, jackpots: 0, jackpotEntries: 0 };
+  /** Rows handed to doFlush so far, per table, and failed statements. */
+  readonly counts = { raw: 0, players: 0, bets: 0, coinflips: 0, jackpots: 0, jackpotEntries: 0, errors: 0 };
+  /** Last failed statement, for callers that want to stop instead of carrying on. */
+  lastError: { table: string; err: unknown } | null = null;
 
   constructor(private db: Db, opts: { recordRaw?: boolean; dryRun?: boolean } = {}) {
     this.recordRaw = opts.recordRaw ?? true;
@@ -126,10 +128,26 @@ export class Sink {
     this.jackpotEntries.set(`${row.site}|${row.jackpotId}|${row.playerId}|${row.depositedAt.toISOString()}`, row);
   }
 
-  /** Serialized: a flush never overlaps a previous one. */
+  /** Serialized: a flush never overlaps a previous one. Never rejects; failures are counted and logged. */
   flush(): Promise<void> {
     this.flushing = this.flushing.then(() => this.doFlush()).catch((e) => log.error({ err: e }, "flush failed"));
     return this.flushing;
+  }
+
+  /**
+   * Each table is written in its own statement and its own try/catch, so one
+   * bad row (or one table's constraint) cannot take the other tables' rows
+   * down with it. The failed rows are dropped and the error logged with the
+   * table name and the first row of the batch for diagnosis.
+   */
+  private async write(table: string, rows: unknown[], stmt: () => Promise<unknown>) {
+    try {
+      await stmt();
+    } catch (err) {
+      this.counts.errors++;
+      this.lastError = { table, err };
+      log.error({ err, table, rows: rows.length, sample: rows[0] }, "flush failed for table");
+    }
   }
 
   async close() {
@@ -158,13 +176,14 @@ export class Sink {
     if (this.dryRun) return;
 
     if (raw.length) {
-      await this.db.execute(sql`
+      // Some events carry no payload ("FG reset"); store JSON null rather than violating NOT NULL.
+      await this.write("raw_events", raw, () => this.db.execute(sql`
         INSERT INTO raw_events (site, event, payload, received_at)
-        SELECT * FROM json_to_recordset(${j(raw.map((r) => ({ site: r.site, event: r.event, payload: r.payload, received_at: r.receivedAt })))}::json)
-          AS x(site text, event text, payload jsonb, received_at timestamptz)`);
+        SELECT site, event, COALESCE(payload, 'null'::jsonb), received_at FROM json_to_recordset(${j(raw.map((r) => ({ site: r.site, event: r.event, payload: r.payload, received_at: r.receivedAt })))}::json)
+          AS x(site text, event text, payload jsonb, received_at timestamptz)`));
     }
     if (players.length) {
-      await this.db.execute(sql`
+      await this.write("players", players, () => this.db.execute(sql`
         INSERT INTO players (site, external_id, display_name, avatar, is_house, first_seen, last_seen)
         SELECT site, external_id, display_name, avatar, is_house, seen_at, seen_at FROM json_to_recordset(${j(
           players.map((p) => ({ site: p.site, external_id: p.externalId, display_name: p.displayName ?? null, avatar: p.avatar ?? null, is_house: p.isHouse ?? false, seen_at: p.seenAt })),
@@ -174,10 +193,10 @@ export class Sink {
           avatar       = COALESCE(EXCLUDED.avatar, players.avatar),
           is_house     = players.is_house OR EXCLUDED.is_house,
           first_seen   = LEAST(players.first_seen, EXCLUDED.first_seen),
-          last_seen    = GREATEST(players.last_seen, EXCLUDED.last_seen)`);
+          last_seen    = GREATEST(players.last_seen, EXCLUDED.last_seen)`));
     }
     if (coinflips.length) {
-      await this.db.execute(sql`
+      await this.write("coinflips", coinflips, () => this.db.execute(sql`
         INSERT INTO coinflips (site, external_id, created_at, status, hash, creator_id, creator_pick, creator_total,
           opponent_id, opponent_total, house_involved, winner_id, winning_side, pot_usd, tax_usd, house_net_usd, settled_at, updated_at, meta)
         SELECT site, external_id, created_at, status, hash, creator_id, creator_pick, creator_total,
@@ -210,10 +229,10 @@ export class Sink {
           house_net_usd  = COALESCE(EXCLUDED.house_net_usd, coinflips.house_net_usd),
           settled_at     = COALESCE(EXCLUDED.settled_at, coinflips.settled_at),
           updated_at     = now(),
-          meta           = COALESCE(EXCLUDED.meta, coinflips.meta)`);
+          meta           = COALESCE(EXCLUDED.meta, coinflips.meta)`));
     }
     if (jackpots.length) {
-      await this.db.execute(sql`
+      await this.write("jackpots", jackpots, () => this.db.execute(sql`
         INSERT INTO jackpots (site, external_id, created_at, status, hash, pot_usd, entries, winner_id, winner_ticket, tax_usd, house_net_usd, settled_at, updated_at, meta)
         SELECT site, external_id, created_at, status, hash, pot_usd, entries, winner_id, winner_ticket, tax_usd, house_net_usd, settled_at, now(), meta
         FROM json_to_recordset(${j(
@@ -235,18 +254,18 @@ export class Sink {
           house_net_usd = COALESCE(EXCLUDED.house_net_usd, jackpots.house_net_usd),
           settled_at    = COALESCE(EXCLUDED.settled_at, jackpots.settled_at),
           updated_at    = now(),
-          meta          = COALESCE(EXCLUDED.meta, jackpots.meta)`);
+          meta          = COALESCE(EXCLUDED.meta, jackpots.meta)`));
     }
     if (entries.length) {
-      await this.db.execute(sql`
+      await this.write("jackpot_entries", entries, () => this.db.execute(sql`
         INSERT INTO jackpot_entries (site, jackpot_id, player_id, amount_usd, items, deposited_at)
         SELECT * FROM json_to_recordset(${j(
           entries.map((e) => ({ site: e.site, jackpot_id: e.jackpotId, player_id: e.playerId, amount_usd: e.amountUsd, items: e.items ?? null, deposited_at: e.depositedAt })),
         )}::json) AS x(site text, jackpot_id text, player_id text, amount_usd numeric, items jsonb, deposited_at timestamptz)
-        ON CONFLICT DO NOTHING`);
+        ON CONFLICT DO NOTHING`));
     }
     if (bets.length) {
-      await this.db.execute(sql`
+      await this.write("bets", bets, () => this.db.execute(sql`
         INSERT INTO bets (site, game, external_id, round_id, player_id, is_house, wagered_usd, payout_usd, won, placed_at, settled_at, meta)
         SELECT * FROM json_to_recordset(${j(
           bets.map((b) => ({
@@ -261,7 +280,7 @@ export class Sink {
           won        = EXCLUDED.won,
           settled_at = COALESCE(EXCLUDED.settled_at, bets.settled_at),
           is_house   = EXCLUDED.is_house,
-          meta       = COALESCE(EXCLUDED.meta, bets.meta)`);
+          meta       = COALESCE(EXCLUDED.meta, bets.meta)`));
     }
 
     const n = raw.length + players.length + bets.length + coinflips.length + jackpots.length + entries.length;

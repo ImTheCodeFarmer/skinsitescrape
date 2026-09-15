@@ -34,7 +34,8 @@ export async function refreshAggregates(db: Db, log: Logger, opts: { pauseMs: nu
     let n = 0;
     while (cur < end) {
       const next = new Date(Math.min(cur.getTime() + p.stepDays * DAY, end.getTime()));
-      await db.execute(sql`CALL refresh_continuous_aggregate(${sql.raw(`'${p.view}'`)}, ${cur}::timestamptz, ${next}::timestamptz)`);
+      // CALL gives the driver no parameter types, so bind ISO strings rather than Date objects.
+      await db.execute(sql`CALL refresh_continuous_aggregate(${sql.raw(`'${p.view}'`)}, ${cur.toISOString()}::timestamptz, ${next.toISOString()}::timestamptz)`);
       n++;
       if (n % 5 === 0) log.info({ view: p.view, through: next.toISOString().slice(0, 10) }, "refreshing");
       cur = next;
