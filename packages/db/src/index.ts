@@ -14,6 +14,8 @@ export function createDb(url = process.env.DATABASE_URL, opts: { max?: number } 
     idle_timeout: 30,
     prepare: false,
     transform: { undefined: null },
+    // Timescale emits a NOTICE per already-fresh aggregate window; keep them out of the logs.
+    onnotice: () => {},
   });
   const db = drizzle(client, { schema });
   return { db, client, close: () => client.end({ timeout: 5 }) };
