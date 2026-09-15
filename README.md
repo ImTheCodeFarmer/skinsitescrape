@@ -73,6 +73,69 @@ within minutes, so it is not worth the browser it takes to mint.
 `TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
 `TRANSPORT=socketio` (plain client) remain as fallbacks for other sites.
 
+## Importing legacy history
+
+`apps/collector/src/backfill` pulls the old scraper's Postgres into this
+schema. Each legacy table is a *source* walked in primary-key order; every
+row becomes the same `players` / `bets` / `coinflips` / `jackpots` upserts the
+live collector writes, tagged `meta.legacy = true`. Progress per source lives
+in `backfill_progress`, so a crash, `Ctrl-C` or redeploy loses at most one
+batch and the next run continues where it stopped. Re-running after the
+legacy scraper has written more simply picks up the new rows.
+
+```bash
+# .env: DATABASE_URL (target) + LEGACY_DB_HOST / LEGACY_DB_NAME / LEGACY_DB_USER / LEGACY_DB_PASSWORD
+pnpm db:migrate                                   # 0004 adds backfill_progress + site rows
+pnpm --filter collector backfill --list           # sources, saved cursors, unit conversions
+pnpm --filter collector backfill --sources rustypot --max-batches 3 --dry-run   # rehearse
+pnpm --filter collector backfill                  # default set, then refresh aggregates
+pnpm --filter collector backfill --refresh-caggs  # aggregates only
+```
+
+In production the same entry point is `node dist/backfill/main.js` inside the
+collector image (`railway ssh`, or `railway run` locally with the service's
+variables). Run it with the collector still up; the two never write the same
+row twice in a conflicting way.
+
+| Source | Legacy table | Becomes |
+|---|---|---|
+| `rustypot` | `events` (coinflips + jackpots) | `coinflips` + 2 `bets` per flip; `jackpots` only (no deposits survived, so no jackpot bets) |
+| `clash-battles`, `rustclash-battles`, `cases-battles` | `*_case_battle_events` | one `bets` row per real player; a null `winning_team` on a finished battle is a bot win |
+| `csgogem-battles` | `csgogem_battles_users` | per-player paid / won straight from the row |
+| `rustyloot-battles` | `rustyloot_case_battle_users` + winners | stake net of `borrow_percent`; winners rows are the payout |
+| `clash-plinko`, `rustclash-plinko` | `*_plinko_bets` | `bet × multiplier` |
+| `clash-roulette`, `rustclash-roulette` (opt-in) | `*_roulette_bets` + games | payout from `BACKFILL_ROULETTE_WHEEL`; the legacy scraper never stored payouts and the wheel layout is unverified |
+| `banditcamp-battles`, `rustmagic-battles` (opt-in) | `*_case_battles` | sites not on the dashboard; RustMagic amounts do not reconcile |
+
+Money: legacy rows are in each site's native units; `config.ts` converts to
+USD (Clash/RustClash cents of gems at $0.60, the rest cents at $1) and
+`BACKFILL_USD_<SITE>` overrides a site. Only `currency = 'REAL'` rows count.
+
+**Cutoff.** Before walking a source the script finds the earliest row the live
+collector wrote for that site/game and skips legacy rows from that instant
+on, so the live feed owns everything after it started. `--until <ISO>`
+overrides. Rustypot ids are the site's own, so an overlap merges rather
+than duplicates anyway.
+
+**Load.** Legacy side: one read-only connection, primary-key range scans of
+`--batch` rows (default 1000) and indexed `= ANY(ids)` lookups; the small
+user tables are read once per run instead of per batch because the legacy
+disk is slow at random reads. Target side: one multi-row upsert per table per
+batch, `--pause` ms between batches (default 250), two connections. Expect
+1-2k legacy rows/s; the default set is a few hours. The newest
+`--tail` minutes (default 15) of legacy rows are left for the next run so
+in-flight games have settled.
+
+**Aggregates.** The continuous-aggregate policies only look back a few days,
+so after the sources catch up the script refreshes `bets_hourly`,
+`player_daily` and `bets_daily` over the imported range in weekly windows
+(`--refresh-caggs` runs just that; `--no-refresh` skips it). Until then the
+dashboard's 24h view and site list will not show the history. If a long
+import spans more than a day, consider pausing the `bets` compression policy
+first (`SELECT alter_job(job_id, scheduled => false) FROM timescaledb_information.jobs WHERE proc_name = 'policy_compression' AND hypertable_name = 'bets'`)
+and re-enabling it afterwards, so late-arriving upserts do not land in
+compressed chunks.
+
 ## Adding a site
 
 1. `pnpm --filter collector discover <site> 180` — connects for three minutes,

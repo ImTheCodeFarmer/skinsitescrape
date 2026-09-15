@@ -11,11 +11,14 @@
     "lint": "echo skip",
     "discover": "node --conditions=source --env-file=../../.env --import tsx src/scripts/discover.ts",
     "reparse": "node --conditions=source --env-file=../../.env --import tsx src/scripts/reparse.ts",
+    "backfill": "node --conditions=source --env-file=../../.env --import tsx src/backfill/main.ts",
+    "backfill:prod": "node dist/backfill/main.js",
     "build:wstap": "cd wstap && go build -o wstap ."
   },
   "dependencies": {
     "@casino/db": "workspace:*",
     "https-proxy-agent": "^7.0.6",
+    "postgres": "^3.4.7",
     "pino": "^9.7.0",
     "playwright-core": "1.63",
     "socket.io-client": "^4.8.1"

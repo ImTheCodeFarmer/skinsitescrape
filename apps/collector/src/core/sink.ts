@@ -89,9 +89,14 @@ export class Sink {
   private timer: NodeJS.Timeout;
   private flushing: Promise<void> = Promise.resolve();
   readonly recordRaw: boolean;
+  /** Buffer and count, but never write. Used by the legacy backfill's dry run. */
+  readonly dryRun: boolean;
+  /** Rows handed to doFlush so far, per table. */
+  readonly counts = { raw: 0, players: 0, bets: 0, coinflips: 0, jackpots: 0, jackpotEntries: 0 };
 
-  constructor(private db: Db, opts: { recordRaw?: boolean } = {}) {
+  constructor(private db: Db, opts: { recordRaw?: boolean; dryRun?: boolean } = {}) {
     this.recordRaw = opts.recordRaw ?? true;
+    this.dryRun = opts.dryRun ?? false;
     this.timer = setInterval(() => void this.flush(), FLUSH_MS);
     this.timer.unref();
   }
@@ -144,6 +149,13 @@ export class Sink {
     this.jackpots.clear();
     const entries = [...this.jackpotEntries.values()];
     this.jackpotEntries.clear();
+    this.counts.raw += raw.length;
+    this.counts.players += players.length;
+    this.counts.bets += bets.length;
+    this.counts.coinflips += coinflips.length;
+    this.counts.jackpots += jackpots.length;
+    this.counts.jackpotEntries += entries.length;
+    if (this.dryRun) return;
 
     if (raw.length) {
       await this.db.execute(sql`

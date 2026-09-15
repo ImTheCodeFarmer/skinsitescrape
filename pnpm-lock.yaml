@@ -22,6 +22,9 @@ importers:
       playwright-core:
         specifier: '1.63'
         version: 1.63.0
+      postgres:
+        specifier: ^3.4.7
+        version: 3.4.9
       socket.io-client:
         specifier: ^4.8.1
         version: 4.8.3
