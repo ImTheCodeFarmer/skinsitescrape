@@ -1,0 +1,14 @@
+/** Parse a socket.io v4 text frame. Returns null for control frames. */
+export function parseSocketIoFrame(s: string): { event: string; args: unknown[] } | null {
+  // "42[...]" = engine.io MESSAGE (4) + socket.io EVENT (2); may carry a namespace ("42/ns,[...]") or ack id ("4212[...]")
+  if (!s.startsWith("42")) return null;
+  const start = s.indexOf("[");
+  if (start < 0) return null;
+  try {
+    const arr = JSON.parse(s.slice(start));
+    if (!Array.isArray(arr) || typeof arr[0] !== "string") return null;
+    return { event: arr[0], args: arr.slice(1) };
+  } catch {
+    return null;
+  }
+}

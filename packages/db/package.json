@@ -1,0 +1,40 @@
+{
+  "name": "@casino/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "source": "./src/schema.ts",
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "migrate": "node --conditions=source --import tsx src/migrate.ts",
+    "migrate:prod": "node dist/migrate.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo skip"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.0",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "tsx": "^4.20.0",
+    "typescript": "^5"
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ]
+}

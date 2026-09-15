@@ -1,36 +1,117 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# casino-stats
 
-## Getting Started
+Dashboard plus collector for skin-casino activity (Clash.gg, RustClash,
+Rustyloot, Rustypot, Cases.gg, CSGOGem). pnpm monorepo.
 
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+apps/web         Next.js + shadcn dashboard (currently on sample data)
+apps/collector   Node service that watches each site's websocket feed and writes to Postgres
+packages/db      Shared Drizzle schema + SQL migrations (TimescaleDB)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Local setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm install
+cp .env.example .env          # fill in PROXY_URL
+docker compose up -d db       # TimescaleDB on localhost:5437
+pnpm db:migrate
+pnpm --filter collector build:wstap   # needs Go 1.24+
+pnpm dev:collector
+pnpm dev                      # dashboard on http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+See "Getting past Cloudflare" for how the collector connects.
 
-## Learn More
+## Data model
 
-To learn more about Next.js, take a look at the following resources:
+| Table | What it holds |
+|---|---|
+| `raw_events` | Every websocket message verbatim (hypertable, compressed after 3 days). Replay source. |
+| `players` | One row per site + site user id. `is_house` marks the site's own bot (Rustypot's "JIMMY"). |
+| `bets` | Generic fact table, one row per player per settled round, any game (hypertable). |
+| `coinflips`, `jackpots`, `jackpot_entries` | Game-specific detail. |
+| `bets_hourly`, `bets_daily`, `player_daily` | Continuous aggregates. The dashboard reads these. |
+| `collector_status` | Heartbeat per site so gaps in the data can be flagged. |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Money columns are USD as reported by the site. House net is `wagered − payout`
+over real players, so tax and house-bot wins both land in it.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Getting past Cloudflare (socket only, no browser)
 
-## Deploy on Vercel
+Rustypot fronts its socket.io endpoint with a Cloudflare managed challenge
+that scores the client's fingerprint. Plain Node clients, curl-impersonate and
+headless Chrome all get a 403. `apps/collector/wstap` is a small Go program
+that passes it: uTLS sends Chrome 152's exact ClientHello (verified JA4 match,
+including the trust-anchor extension 51764 and GREASE in signature
+algorithms) and the upgrade request is written byte-for-byte in Chrome's
+header order. The collector spawns it and speaks NDJSON over stdio.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+What Cloudflare checks, as established by testing:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Signal | Requirement |
+|---|---|
+| TLS ClientHello | Must match a real Chrome. `wstap -fp` prints our JA4; compare with a browser. |
+| HTTP/1.1 upgrade | Chrome's header order. `Connection` must be second. |
+| User-Agent OS vs TCP stack | Must agree. `wstap` picks Linux/macOS/Windows UA from the OS it runs on. |
+| Egress IP reputation | Clean IPs (home ISP, and hopefully Railway) pass on fingerprint alone. Residential proxy pools get challenged and need a clearance cookie. |
+
+**Using a proxy.** Residential pools hand out exits of mixed reputation and
+Cloudflare challenges most of them, roughly five in six on the `low` pool.
+The collector therefore *hunts*: it appends a fresh `_session-<id>` to the
+proxy username on every refusal, keeps the exit that connects, and hunts
+again only after the connection drops. Set `PROXY_URL` to the bare pool
+credentials and leave `PROXY_STICKY=true`. Expect a few seconds to a minute
+of hunting per (re)connect; `PROXY_HUNT_MAX` (default 40) refusals in a row
+triggers a five-minute pause. If you pin a session yourself (username already
+contains `_session-`), hunting is off and refusals back off from 30s to 10 min.
+
+A `cf_clearance` cookie (`WS_COOKIE` + `WS_UA`) also gets a challenged exit
+through, but it is bound to the minting IP and the pool's sessions rotate
+within minutes, so it is not worth the browser it takes to mint.
+
+`TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
+`TRANSPORT=socketio` (plain client) remain as fallbacks for other sites.
+
+## Adding a site
+
+1. `pnpm --filter collector discover <site> 180` — connects for three minutes,
+   tallies event names, and saves samples to `apps/collector/discover/`.
+2. Write `apps/collector/src/adapters/<site>/` with a `SiteAdapter` that maps
+   events to `sink.player / bet / coinflip / jackpot` calls. Keep the full
+   payload in `meta` for anything you're unsure about.
+3. Register it in `apps/collector/src/adapters/index.ts` and add the site to
+   `SITES`.
+4. If a parser was wrong, fix it and run `pnpm --filter collector reparse <site>`
+   to re-derive everything from `raw_events`. All writes are idempotent.
+
+## Rustypot notes
+
+- Coinflip lifecycle: `cf newLobby` (Open) → `updateCFStatus` (Joining,
+  Flipping, Ended). `Ended` carries `winner.{id, coin}` and `completedDate`.
+  `cf RemoveLobby` fires for cancelled lobbies **and** after finished flips.
+- Jackpot rounds are only named when they end. Deposits arrive as bare rows
+  (`jackpot deposit`, one per transaction; a player can appear more than once),
+  and `jackpot winnerInfo` brings the round `_id`. The adapter holds the round
+  in memory until then. Rounds joined mid-way are flagged `meta.partial` and
+  get no `bets` rows, so they never skew the rollups.
+- The feed does not state the tax taken on a flip or pot. Both are recorded as
+  a 10% estimate and flagged with `meta.taxEstimated = true`. If the exact
+  figure surfaces (for example in the trade offer), adjust
+  `COINFLIP_TAX_RATE` / `JACKPOT_TAX_RATE` and reparse.
+- `gamemode_totals` (live pot sizes) and `new BiggestBet` are stored raw only.
+
+## Deploying to Railway
+
+Three services in one project:
+
+1. **db** — deploy the `timescale/timescaledb:latest-pg16` image with a volume
+   mounted at `/var/lib/postgresql/data`. Set `POSTGRES_PASSWORD`.
+2. **collector** — root directory `/`, Dockerfile `apps/collector/Dockerfile`.
+   Env: `DATABASE_URL` (reference the db service's private URL),
+   `SITES=rustypot`, `PROXY_URL` (the `low_country-US` pool works with hunting; try
+   without a proxy first and keep it only if Railway's own IP is challenged).
+   ~256 MB RAM is plenty. Migrations run on boot.
+3. **web** — root directory `apps/web`, Nixpacks default. Env: `DATABASE_URL`.
+
+Add a nightly `pg_dump` cron to object storage; the volume is a single node.

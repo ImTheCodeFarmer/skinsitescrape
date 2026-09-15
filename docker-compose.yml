@@ -1,0 +1,15 @@
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    ports:
+      - "5437:5432"
+    environment:
+      POSTGRES_USER: casino
+      POSTGRES_PASSWORD: casino
+      POSTGRES_DB: casino
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    command: postgres -c shared_preload_libraries=timescaledb -c max_connections=50
+
+volumes:
+  dbdata:
