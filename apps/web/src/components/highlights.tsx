@@ -1,10 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { Coins, Crown, Landmark } from "lucide-react";
+import { Clock, Clover, Coins, Crown, Flame, Gem, Landmark, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { dateTime, money } from "@/lib/format";
+import { count, dateTime, money } from "@/lib/format";
 import type { Highlight, HighlightPlayer, Highlights } from "@/lib/types";
 
 function Face({ p, color }: { p: HighlightPlayer; color: string }) {
@@ -17,6 +17,8 @@ function Face({ p, color }: { p: HighlightPlayer; color: string }) {
   );
 }
 
+const GAME_LABEL: Record<Highlight["game"], string> = { coinflip: "Coinflip", jackpot: "Jackpot", hourly: "Hour" };
+
 function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: string; h: Highlight | null; color: string; tone: string }) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card/60 p-4">
@@ -26,13 +28,15 @@ function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: s
       </div>
       {h ? (
         <>
-          <div className="text-2xl font-semibold tracking-tight tabular-nums">{money(h.amount)}</div>
+          <div className="text-2xl font-semibold tracking-tight tabular-nums">
+            {h.format === "count" ? `${count(h.amount)} in a row` : money(h.amount)}
+          </div>
           <div className="flex items-center gap-2">
-            <span className="flex -space-x-1.5">{h.players.map((p, i) => <Face key={i} p={p} color={color} />)}</span>
-            <span className="min-w-0 truncate text-sm">{h.caption}</span>
+            {h.players.length ? <span className="flex -space-x-1.5">{h.players.map((p, i) => <Face key={i} p={p} color={color} />)}</span> : null}
+            <span className="min-w-0 truncate text-sm" title={h.caption}>{h.caption}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal capitalize">{h.game}</Badge>
+            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{GAME_LABEL[h.game]}</Badge>
             {dateTime(h.at)}
           </div>
         </>
@@ -44,16 +48,24 @@ function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: s
 }
 
 export function HighlightsCard({ data, color, rangeLabel }: { data: Highlights; color: string; rangeLabel: string }) {
+  const tiles: { key: keyof Highlights; label: string; icon: React.ReactNode; tone: string }[] = [
+    { key: "biggestFlip", label: "Biggest flip", icon: <Coins className="size-3.5" />, tone: "text-amber-400" },
+    { key: "biggestJackpot", label: "Biggest jackpot", icon: <Gem className="size-3.5" />, tone: "text-violet-400" },
+    { key: "biggestPlayerWin", label: "Biggest player win", icon: <Crown className="size-3.5" />, tone: "text-emerald-400" },
+    { key: "biggestSiteWin", label: "Biggest site win", icon: <Landmark className="size-3.5" />, tone: "text-rose-400" },
+    { key: "biggestBotLoss", label: "Biggest bot loss", icon: <TrendingDown className="size-3.5" />, tone: "text-orange-400" },
+    { key: "longestShot", label: "Longest shot", icon: <Clover className="size-3.5" />, tone: "text-lime-400" },
+    { key: "longestStreak", label: "Longest win streak", icon: <Flame className="size-3.5" />, tone: "text-red-400" },
+    { key: "peakHour", label: "Peak hour", icon: <Clock className="size-3.5" />, tone: "text-sky-400" },
+  ];
   return (
-    <Card className="h-full">
+    <Card>
       <CardHeader>
         <CardTitle>Records</CardTitle>
-        <CardDescription>Biggest moments in the {rangeLabel}</CardDescription>
+        <CardDescription>Biggest moments in the {rangeLabel}. Amounts are what the winner received.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-3">
-        <Tile icon={<Coins className="size-3.5" />} label="Biggest flip" h={data.biggestFlip} color={color} tone="text-amber-400" />
-        <Tile icon={<Crown className="size-3.5" />} label="Biggest player win" h={data.biggestPlayerWin} color={color} tone="text-emerald-400" />
-        <Tile icon={<Landmark className="size-3.5" />} label="Biggest site win" h={data.biggestSiteWin} color={color} tone="text-rose-400" />
+      <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {tiles.map((t) => <Tile key={t.key} icon={t.icon} label={t.label} h={data[t.key]} color={color} tone={t.tone} />)}
       </CardContent>
     </Card>
   );

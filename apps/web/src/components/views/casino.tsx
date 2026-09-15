@@ -103,15 +103,9 @@ export function CasinoView(initial: CasinoData) {
             <KpiCard label="Net" value={s.net} format={money} delta={s.deltaNet ?? undefined} hint={s.wagered ? `${((s.net / s.wagered) * 100).toFixed(2)}% realized edge` : undefined} />
           </div>
 
-          {breakdown && records ? (
-            <div className="grid gap-4 lg:grid-cols-5">
-              <Reveal className="lg:col-span-2"><ProfitBreakdownCard data={breakdown} color={casino.color} /></Reveal>
-              <Reveal className="lg:col-span-3"><HighlightsCard data={records} color={casino.color} rangeLabel={RANGE_LABEL[range]} /></Reveal>
-            </div>
-          ) : null}
-
-          <Reveal>
-            <Card>
+          <div className="grid gap-4 lg:grid-cols-5">
+          <Reveal className="lg:col-span-3">
+            <Card className="h-full">
               <CardHeader className="flex-row items-start justify-between">
                 <div>
                   <CardTitle>Activity</CardTitle>
@@ -133,6 +127,10 @@ export function CasinoView(initial: CasinoData) {
               </CardContent>
             </Card>
           </Reveal>
+          {breakdown ? <Reveal className="lg:col-span-2"><ProfitBreakdownCard data={breakdown} color={casino.color} /></Reveal> : null}
+          </div>
+
+          {records ? <Reveal><HighlightsCard data={records} color={casino.color} rangeLabel={RANGE_LABEL[range]} /></Reveal> : null}
 
           <div className="grid gap-4 lg:grid-cols-5">
             <Reveal className="lg:col-span-3">

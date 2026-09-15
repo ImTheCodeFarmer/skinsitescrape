@@ -109,8 +109,10 @@ export type HighlightPlayer = { name: string; avatar: string | null; house: bool
 
 export type Highlight = {
   amount: number;
+  /** How to render `amount`. Default money. */
+  format?: "money" | "count";
   at: string; // ISO
-  game: "coinflip" | "jackpot";
+  game: "coinflip" | "jackpot" | "hourly";
   roundId: string;
   /** Short line under the amount, e.g. "Lyon beat JIMMY". */
   caption: string;
@@ -121,6 +123,15 @@ export type Highlights = {
   biggestFlip: Highlight | null;
   biggestPlayerWin: Highlight | null;
   biggestSiteWin: Highlight | null;
+  biggestJackpot: Highlight | null;
+  /** Jackpot won at the lowest chance. */
+  longestShot: Highlight | null;
+  /** Most consecutive coinflip wins by one player. */
+  longestStreak: Highlight | null;
+  /** Largest payout to a player who beat the house bot. */
+  biggestBotLoss: Highlight | null;
+  /** Hour with the most wagered. */
+  peakHour: Highlight | null;
 };
 
 /** One live tick for a casino page: the moving buckets, the small aggregates, and rounds newer than the client's cursor. */

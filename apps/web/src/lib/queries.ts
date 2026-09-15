@@ -317,6 +317,12 @@ const flipSelect = sql`
   LEFT JOIN players pc ON pc.site = c.site AND pc.external_id = c.creator_id
   LEFT JOIN players po ON po.site = c.site AND po.external_id = c.opponent_id
   LEFT JOIN players pw ON pw.site = c.site AND pw.external_id = c.winner_id`;
+const jackpotSelect = sql`
+  SELECT j.external_id, j.settled_at, j.created_at, j.pot_usd, j.tax_usd, j.winner_id, (j.meta->>'winnerChance')::numeric winner_chance,
+         j.meta->>'winnerName' winner_name_meta, p.display_name winner_name, p.avatar winner_avatar, coalesce(p.is_house, false) winner_house
+  FROM jackpots j LEFT JOIN players p ON p.site = j.site AND p.external_id = j.winner_id`;
+const jackpotWinner = (x: Row) => who(x.winner_name ?? x.winner_name_meta, x.winner_id ?? "?", x.winner_avatar, Boolean(x.winner_house));
+const chance = (v: unknown) => (v == null ? "" : ` at ${n(v).toFixed(n(v) < 10 ? 1 : 0)}% chance`);
 /** Gross the house received from a flip: the whole pot when its bot won, otherwise just the tax. */
 const houseGross = sql`CASE WHEN coalesce(pw.is_house, false) THEN c.pot_usd ELSE c.tax_usd END`;
 
@@ -334,7 +340,7 @@ export const highlights = (site: string, range: Range) => memo(`records:${site}:
 async function highlightsQuery(site: string, range: Range): Promise<Highlights> {
   const hours = range === 1 ? 24 : range * 24;
   const since = sql`now() - make_interval(hours => ${hours})`;
-  const [[flip], [playerWin], [houseFlip], [houseJackpot]] = await Promise.all([
+  const [[flip], [playerWin], [houseFlip], [houseJackpot], [jackpot], [longShot], [streak], [botLoss], [peak]] = await Promise.all([
     rows(sql`${flipSelect} WHERE c.site = ${site} AND c.status = 'Ended' AND c.created_at >= ${since} ORDER BY c.pot_usd DESC NULLS LAST LIMIT 1`),
     rows(sql`
       SELECT b.game, b.round_id, b.player_id, b.settled_at, b.placed_at, b.payout_usd, b.wagered_usd, p.display_name, p.avatar
@@ -342,13 +348,27 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
       WHERE b.site = ${site} AND NOT b.is_house AND b.settled_at IS NOT NULL AND b.placed_at >= ${since}
       ORDER BY b.payout_usd DESC LIMIT 1`),
     rows(sql`${flipSelect} WHERE c.site = ${site} AND c.status = 'Ended' AND c.created_at >= ${since} ORDER BY ${houseGross} DESC NULLS LAST LIMIT 1`),
+    rows(sql`${jackpotSelect} WHERE j.site = ${site} AND j.status = 'Ended' AND j.created_at >= ${since}
+      ORDER BY CASE WHEN coalesce(p.is_house, false) THEN j.pot_usd ELSE j.tax_usd END DESC NULLS LAST LIMIT 1`),
+    rows(sql`${jackpotSelect} WHERE j.site = ${site} AND j.status = 'Ended' AND j.created_at >= ${since} ORDER BY j.pot_usd DESC NULLS LAST LIMIT 1`),
+    rows(sql`${jackpotSelect} WHERE j.site = ${site} AND j.status = 'Ended' AND j.created_at >= ${since}
+      AND (j.meta->>'winnerChance')::numeric > 0 AND j.pot_usd >= 25
+      ORDER BY (j.meta->>'winnerChance')::numeric ASC, j.pot_usd DESC LIMIT 1`),
     rows(sql`
-      SELECT j.external_id, j.settled_at, j.created_at, j.pot_usd, j.tax_usd, j.winner_id, j.meta->>'winnerName' winner_name_meta, p.display_name winner_name, p.avatar winner_avatar,
-             coalesce(p.is_house, false) winner_house,
-             CASE WHEN coalesce(p.is_house, false) THEN j.pot_usd ELSE j.tax_usd END AS gross
-      FROM jackpots j LEFT JOIN players p ON p.site = j.site AND p.external_id = j.winner_id
-      WHERE j.site = ${site} AND j.status = 'Ended' AND j.created_at >= ${since}
-      ORDER BY gross DESC NULLS LAST LIMIT 1`),
+      WITH f AS (
+        SELECT player_id, placed_at, won, payout_usd - wagered_usd AS profit,
+               row_number() OVER (PARTITION BY player_id ORDER BY placed_at)
+             - row_number() OVER (PARTITION BY player_id, won ORDER BY placed_at) AS grp
+        FROM bets WHERE site = ${site} AND game = 'coinflip' AND NOT is_house AND settled_at IS NOT NULL AND placed_at >= ${since}),
+      s AS (
+        SELECT player_id, count(*) AS streak, sum(profit) AS profit, min(placed_at) AS started, max(placed_at) AS ended
+        FROM f WHERE won GROUP BY player_id, grp ORDER BY streak DESC, profit DESC LIMIT 1)
+      SELECT s.*, p.display_name, p.avatar FROM s LEFT JOIN players p ON p.site = ${site} AND p.external_id = s.player_id`),
+    rows(sql`${flipSelect} WHERE c.site = ${site} AND c.status = 'Ended' AND c.created_at >= ${since}
+      AND c.house_involved AND NOT coalesce(pw.is_house, false) ORDER BY c.pot_usd DESC NULLS LAST LIMIT 1`),
+    rows(sql`
+      SELECT bucket, sum(wagered_usd) wagered, sum(bets) bets FROM bets_hourly
+      WHERE site = ${site} AND bucket >= ${since} GROUP BY bucket ORDER BY wagered DESC NULLS LAST LIMIT 1`),
   ]);
 
   const biggestFlip = flip ? flipHighlight(flip, n(flip.pot_usd)) : null;
@@ -366,7 +386,7 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
     : null;
 
   const houseFlipGross = houseFlip ? (houseFlip.winner_house ? n(houseFlip.pot_usd) : n(houseFlip.tax_usd)) : -Infinity;
-  const houseJackpotGross = houseJackpot ? n(houseJackpot.gross) : -Infinity;
+  const houseJackpotGross = houseJackpot ? (houseJackpot.winner_house ? n(houseJackpot.pot_usd) : n(houseJackpot.tax_usd)) : -Infinity;
   let biggestSiteWin: Highlight | null = null;
   if (houseFlip && houseFlipGross >= houseJackpotGross) {
     if (houseFlip.winner_house) {
@@ -377,7 +397,7 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
       biggestSiteWin = { ...h, caption: `Tax on ${h.caption}` };
     }
   } else if (houseJackpot) {
-    const winner = who(houseJackpot.winner_name ?? houseJackpot.winner_name_meta, houseJackpot.winner_id ?? "?", houseJackpot.winner_avatar, Boolean(houseJackpot.winner_house));
+    const winner = jackpotWinner(houseJackpot);
     biggestSiteWin = {
       amount: houseJackpotGross,
       at: iso(houseJackpot.settled_at ?? houseJackpot.created_at),
@@ -389,7 +409,31 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
       players: [winner],
     };
   }
-  return { biggestFlip, biggestPlayerWin, biggestSiteWin };
+  const biggestJackpot: Highlight | null = jackpot
+    ? { amount: n(jackpot.pot_usd), at: iso(jackpot.settled_at ?? jackpot.created_at), game: "jackpot", roundId: String(jackpot.external_id), caption: `${jackpotWinner(jackpot).name} won${chance(jackpot.winner_chance)}`, players: [jackpotWinner(jackpot)] }
+    : null;
+  const longestShot: Highlight | null = longShot
+    ? { amount: n(longShot.pot_usd), at: iso(longShot.settled_at ?? longShot.created_at), game: "jackpot", roundId: String(longShot.external_id), caption: `${jackpotWinner(longShot).name} won${chance(longShot.winner_chance)}`, players: [jackpotWinner(longShot)] }
+    : null;
+  const longestStreak: Highlight | null = streak
+    ? {
+        amount: n(streak.streak),
+        format: "count",
+        at: iso(streak.ended),
+        game: "coinflip",
+        roundId: "",
+        caption: `${str(streak.display_name) ?? String(streak.player_id)} · ${n(streak.profit) >= 0 ? "+" : "−"}${moneyForCaption(Math.abs(n(streak.profit)))} over the run`,
+        players: [who(streak.display_name, streak.player_id, streak.avatar, false)],
+      }
+    : null;
+  const biggestBotLoss: Highlight | null = botLoss
+    ? flipHighlight(botLoss, round2(n(botLoss.pot_usd) - n(botLoss.tax_usd)), staked(botLoss.creator_house ? botLoss.creator_total : botLoss.opponent_total).replace("staked", "bot staked"))
+    : null;
+  const peakHour: Highlight | null = peak
+    ? { amount: n(peak.wagered), at: iso(peak.bucket), game: "hourly", roundId: "", caption: `${new Intl.NumberFormat("en-US").format(n(peak.bets))} bets in the hour from ${new Date(peak.bucket as string).toLocaleTimeString("en-US", { hour: "numeric", hour12: true, timeZone: "UTC" })} UTC`, players: [] }
+    : null;
+  return { biggestFlip, biggestPlayerWin, biggestSiteWin, biggestJackpot, longestShot, longestStreak, biggestBotLoss, peakHour };
 }
+const round2 = (v: number) => Math.round(v * 100) / 100;
 
 const moneyForCaption = (v: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
