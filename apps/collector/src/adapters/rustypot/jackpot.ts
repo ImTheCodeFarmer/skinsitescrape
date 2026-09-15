@@ -6,14 +6,15 @@
  * round, entries and bets when the winner is announced.
  *
  * Tax: the feed never states it. Pot totals in results match the sum of
- * deposits (pre-tax), so house_net is recorded as an estimate at
- * JACKPOT_TAX_RATE and flagged in meta.
+ * deposits (pre-tax), so house_net is recorded at JACKPOT_TAX_RATE and
+ * flagged as estimated in meta.
  */
 import type { AdapterContext } from "../../core/adapter.js";
 import { SITE, HOUSE_ID } from "./coinflip.js";
 import type { RpJackpotDeposit, RpJackpotResult, RpJackpotWinnerInfo } from "./types.js";
 
-export const JACKPOT_TAX_RATE = 0.1;
+/** Rake on a jackpot: 5% of the pot, measured on the legacy scraper's recorded tax (5.00% ± 0.03 over 9.8k rounds). */
+export const JACKPOT_TAX_RATE = 0.05;
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 type Deposit = { player: RpJackpotDeposit; at: Date; amount: number };

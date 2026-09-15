@@ -276,9 +276,10 @@ const iso = (v: unknown) => new Date(v as string).toISOString();
 /**
  * Splits house net into the bot's own coinflip results and the rake on each
  * game. For a flip the house played, house_net_usd already nets tax and the
- * bot's stake, so bot = house_net − tax; flips between two real players
- * contribute tax only. Jackpot rake comes from the jackpots table so legacy
- * rounds (which have no bets rows) still count.
+ * bot's stake, so bot = house_net − tax, split into flips the bot won and
+ * flips it lost; flips between two real players contribute tax only. Jackpot
+ * rake comes from the jackpots table so legacy rounds (which have no bets
+ * rows) still count.
  */
 export const profitBreakdown = (site: string, range: Range) => memo(`breakdown:${site}:${range}`, ttlFor(range), () => profitBreakdownQuery(site, range));
 async function profitBreakdownQuery(site: string, range: Range): Promise<ProfitBreakdown> {
@@ -286,8 +287,10 @@ async function profitBreakdownQuery(site: string, range: Range): Promise<ProfitB
   const since = sql`now() - make_interval(hours => ${hours})`;
   const [[c], [j]] = await Promise.all([
     rows(sql`
+      WITH house AS (SELECT external_id FROM players WHERE site = ${site} AND is_house)
       SELECT coalesce(sum(tax_usd), 0) flip_tax,
-             coalesce(sum(house_net_usd - coalesce(tax_usd, 0)) FILTER (WHERE house_involved), 0) bot_net,
+             coalesce(sum(house_net_usd - coalesce(tax_usd, 0)) FILTER (WHERE house_involved AND winner_id IN (SELECT external_id FROM house)), 0) bot_wins,
+             coalesce(sum(house_net_usd - coalesce(tax_usd, 0)) FILTER (WHERE house_involved AND winner_id NOT IN (SELECT external_id FROM house)), 0) bot_losses,
              count(*) FILTER (WHERE house_involved) house_flips,
              coalesce(bool_or((meta->>'taxEstimated')::boolean), false) estimated
       FROM coinflips WHERE site = ${site} AND status = 'Ended' AND created_at >= ${since}`),
@@ -295,29 +298,36 @@ async function profitBreakdownQuery(site: string, range: Range): Promise<ProfitB
       SELECT coalesce(sum(tax_usd), 0) jackpot_tax, coalesce(bool_or((meta->>'taxEstimated')::boolean), false) estimated
       FROM jackpots WHERE site = ${site} AND status = 'Ended' AND created_at >= ${since}`),
   ]);
-  const botNet = n(c?.bot_net);
+  const botWins = n(c?.bot_wins);
+  const botLosses = n(c?.bot_losses);
   const flipTax = n(c?.flip_tax);
   const jackpotTax = n(j?.jackpot_tax);
-  return { botNet, flipTax, jackpotTax, total: botNet + flipTax + jackpotTax, houseFlips: n(c?.house_flips), estimated: Boolean(c?.estimated) || Boolean(j?.estimated) };
+  return { botWins, botLosses, flipTax, jackpotTax, total: botWins + botLosses + flipTax + jackpotTax, houseFlips: n(c?.house_flips), estimated: Boolean(c?.estimated) || Boolean(j?.estimated) };
 }
 
 const who = (name: unknown, id: unknown, avatar: unknown, house: unknown) => ({ name: str(name) ?? String(id ?? "?"), avatar: str(avatar), house: Boolean(house) });
 
 const flipSelect = sql`
-  SELECT c.external_id, c.settled_at, c.created_at, c.pot_usd, c.house_net_usd, c.winner_id, c.creator_id, c.opponent_id,
+  SELECT c.external_id, c.settled_at, c.created_at, c.pot_usd, c.tax_usd, c.house_net_usd, c.winner_id, c.creator_id, c.opponent_id,
+         c.creator_total, c.opponent_total,
          pc.display_name creator_name, pc.avatar creator_avatar, coalesce(pc.is_house, false) creator_house,
-         po.display_name opponent_name, po.avatar opponent_avatar, coalesce(po.is_house, false) opponent_house
+         po.display_name opponent_name, po.avatar opponent_avatar, coalesce(po.is_house, false) opponent_house,
+         coalesce(pw.is_house, false) winner_house
   FROM coinflips c
   LEFT JOIN players pc ON pc.site = c.site AND pc.external_id = c.creator_id
-  LEFT JOIN players po ON po.site = c.site AND po.external_id = c.opponent_id`;
+  LEFT JOIN players po ON po.site = c.site AND po.external_id = c.opponent_id
+  LEFT JOIN players pw ON pw.site = c.site AND pw.external_id = c.winner_id`;
+/** Gross the house received from a flip: the whole pot when its bot won, otherwise just the tax. */
+const houseGross = sql`CASE WHEN coalesce(pw.is_house, false) THEN c.pot_usd ELSE c.tax_usd END`;
 
-function flipHighlight(x: Row, amount: number): Highlight {
+function flipHighlight(x: Row, amount: number, suffix = ""): Highlight {
   const creator = who(x.creator_name, x.creator_id, x.creator_avatar, x.creator_house);
   const opponent = who(x.opponent_name, x.opponent_id, x.opponent_avatar, x.opponent_house);
   const creatorWon = str(x.winner_id) === str(x.creator_id);
   const [winner, loser] = creatorWon ? [creator, opponent] : [opponent, creator];
-  return { amount, at: iso(x.settled_at ?? x.created_at), game: "coinflip", roundId: String(x.external_id), caption: `${winner.name} beat ${loser.name}`, players: [creator, opponent] };
+  return { amount, at: iso(x.settled_at ?? x.created_at), game: "coinflip", roundId: String(x.external_id), caption: `${winner.name} beat ${loser.name}${suffix}`, players: [creator, opponent] };
 }
+const staked = (v: unknown) => ` · staked ${moneyForCaption(n(v))}`;
 
 /** Biggest pot, biggest single-bet player profit, and biggest single-round house take in range. */
 export const highlights = (site: string, range: Range) => memo(`records:${site}:${range}`, ttlFor(range), () => highlightsQuery(site, range));
@@ -327,46 +337,55 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
   const [[flip], [playerWin], [houseFlip], [houseJackpot]] = await Promise.all([
     rows(sql`${flipSelect} WHERE c.site = ${site} AND c.status = 'Ended' AND c.created_at >= ${since} ORDER BY c.pot_usd DESC NULLS LAST LIMIT 1`),
     rows(sql`
-      SELECT b.game, b.round_id, b.player_id, b.settled_at, b.placed_at, b.payout_usd - b.wagered_usd AS win, p.display_name, p.avatar
+      SELECT b.game, b.round_id, b.player_id, b.settled_at, b.placed_at, b.payout_usd, b.wagered_usd, p.display_name, p.avatar
       FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
       WHERE b.site = ${site} AND NOT b.is_house AND b.settled_at IS NOT NULL AND b.placed_at >= ${since}
-      ORDER BY win DESC LIMIT 1`),
-    rows(sql`${flipSelect} WHERE c.site = ${site} AND c.status = 'Ended' AND c.created_at >= ${since} ORDER BY c.house_net_usd DESC NULLS LAST LIMIT 1`),
+      ORDER BY b.payout_usd DESC LIMIT 1`),
+    rows(sql`${flipSelect} WHERE c.site = ${site} AND c.status = 'Ended' AND c.created_at >= ${since} ORDER BY ${houseGross} DESC NULLS LAST LIMIT 1`),
     rows(sql`
-      SELECT j.external_id, j.settled_at, j.created_at, j.pot_usd, j.house_net_usd, j.winner_id, j.meta->>'winnerName' winner_name_meta, p.display_name winner_name, p.avatar winner_avatar
+      SELECT j.external_id, j.settled_at, j.created_at, j.pot_usd, j.tax_usd, j.winner_id, j.meta->>'winnerName' winner_name_meta, p.display_name winner_name, p.avatar winner_avatar,
+             coalesce(p.is_house, false) winner_house,
+             CASE WHEN coalesce(p.is_house, false) THEN j.pot_usd ELSE j.tax_usd END AS gross
       FROM jackpots j LEFT JOIN players p ON p.site = j.site AND p.external_id = j.winner_id
       WHERE j.site = ${site} AND j.status = 'Ended' AND j.created_at >= ${since}
-      ORDER BY j.house_net_usd DESC NULLS LAST LIMIT 1`),
+      ORDER BY gross DESC NULLS LAST LIMIT 1`),
   ]);
 
   const biggestFlip = flip ? flipHighlight(flip, n(flip.pot_usd)) : null;
 
+  // Gross figures: what the winner received, with the stake in the caption.
   const biggestPlayerWin: Highlight | null = playerWin
     ? {
-        amount: n(playerWin.win),
+        amount: n(playerWin.payout_usd),
         at: iso(playerWin.settled_at ?? playerWin.placed_at),
         game: String(playerWin.game) === "jackpot" ? "jackpot" : "coinflip",
         roundId: str(playerWin.round_id) ?? "",
-        caption: `${str(playerWin.display_name) ?? String(playerWin.player_id)} on ${gameLabel(String(playerWin.game)).toLowerCase()}`,
+        caption: `${str(playerWin.display_name) ?? String(playerWin.player_id)} on ${gameLabel(String(playerWin.game)).toLowerCase()}${staked(playerWin.wagered_usd)}`,
         players: [who(playerWin.display_name, playerWin.player_id, playerWin.avatar, false)],
       }
     : null;
 
-  const houseFlipNet = houseFlip ? n(houseFlip.house_net_usd) : -Infinity;
-  const houseJackpotNet = houseJackpot ? n(houseJackpot.house_net_usd) : -Infinity;
+  const houseFlipGross = houseFlip ? (houseFlip.winner_house ? n(houseFlip.pot_usd) : n(houseFlip.tax_usd)) : -Infinity;
+  const houseJackpotGross = houseJackpot ? n(houseJackpot.gross) : -Infinity;
   let biggestSiteWin: Highlight | null = null;
-  if (houseFlip && houseFlipNet >= houseJackpotNet) {
-    const h = flipHighlight(houseFlip, houseFlipNet);
-    const houseWon = h.players.some((p) => p.house && h.caption.startsWith(p.name));
-    biggestSiteWin = { ...h, caption: houseWon ? h.caption : `Tax on ${h.caption}` };
+  if (houseFlip && houseFlipGross >= houseJackpotGross) {
+    if (houseFlip.winner_house) {
+      const houseStake = houseFlip.creator_house ? houseFlip.creator_total : houseFlip.opponent_total;
+      biggestSiteWin = flipHighlight(houseFlip, houseFlipGross, staked(houseStake));
+    } else {
+      const h = flipHighlight(houseFlip, houseFlipGross);
+      biggestSiteWin = { ...h, caption: `Tax on ${h.caption}` };
+    }
   } else if (houseJackpot) {
-    const winner = who(houseJackpot.winner_name ?? houseJackpot.winner_name_meta, houseJackpot.winner_id ?? "?", houseJackpot.winner_avatar, false);
+    const winner = who(houseJackpot.winner_name ?? houseJackpot.winner_name_meta, houseJackpot.winner_id ?? "?", houseJackpot.winner_avatar, Boolean(houseJackpot.winner_house));
     biggestSiteWin = {
-      amount: houseJackpotNet,
+      amount: houseJackpotGross,
       at: iso(houseJackpot.settled_at ?? houseJackpot.created_at),
       game: "jackpot",
       roundId: String(houseJackpot.external_id),
-      caption: `Tax on a ${moneyForCaption(n(houseJackpot.pot_usd))} jackpot won by ${winner.name}`,
+      caption: houseJackpot.winner_house
+        ? `${winner.name} won the ${moneyForCaption(n(houseJackpot.pot_usd))} pot`
+        : `Tax on a ${moneyForCaption(n(houseJackpot.pot_usd))} jackpot won by ${winner.name}`,
       players: [winner],
     };
   }

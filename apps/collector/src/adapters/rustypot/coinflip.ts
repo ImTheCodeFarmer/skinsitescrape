@@ -3,8 +3,11 @@ import type { RpCoinflip, RpSide, RpItem } from "./types.js";
 
 export const SITE = "rustypot";
 export const HOUSE_ID = "JIMMY";
-/** Site keeps "up to 10%" of the loser's items when a real player wins. Exact figure is not in the feed. */
-export const COINFLIP_TAX_RATE = 0.1;
+/**
+ * Rake on a flip a real player wins: 5% of the whole pot. Not in the feed;
+ * measured on 51k flips from the legacy scraper's recorded tax (5.00% ± 0.06).
+ */
+export const COINFLIP_TAX_RATE = 0.05;
 
 export const isHouseSide = (side?: Partial<RpSide> | null) =>
   !!side && (side.id === HOUSE_ID || side.displayName === HOUSE_ID || (side.image ?? "").includes("/img/jimmy/"));
@@ -44,7 +47,7 @@ export function handleCoinflip(cf: RpCoinflip, receivedAt: Date, ctx: AdapterCon
       taxUsd = 0;
       houseNetUsd = round4(loserTotal); // Jimmy keeps the player's items outright
     } else {
-      taxUsd = round4(loserTotal * COINFLIP_TAX_RATE); // estimate, see COINFLIP_TAX_RATE
+      taxUsd = round4(potUsd * COINFLIP_TAX_RATE); // estimate, see COINFLIP_TAX_RATE
       houseNetUsd = houseStake > 0 ? round4(-(houseStake - taxUsd)) : taxUsd; // lost Jimmy's items (net of tax) or pure rake
     }
   }

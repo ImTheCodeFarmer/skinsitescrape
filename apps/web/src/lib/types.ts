@@ -93,8 +93,10 @@ export type JackpotRound = {
 
 /** Where the house's net came from over the range. Components sum to `total`. */
 export type ProfitBreakdown = {
-  /** House bot's own coinflip results: stakes won minus stakes lost, before tax. */
-  botNet: number;
+  /** Stakes the house bot took from players on flips it won. */
+  botWins: number;
+  /** Stakes the house bot lost to players on flips it lost (negative or zero). */
+  botLosses: number;
   flipTax: number;
   jackpotTax: number;
   total: number;

@@ -10,9 +10,10 @@ type RowSpec = { label: string; hint: string; value: number };
 
 export function ProfitBreakdownCard({ data, color }: { data: ProfitBreakdown; color: string }) {
   const rowsSpec: RowSpec[] = [
-    { label: "House bot flips", hint: data.houseFlips ? `Stakes won minus stakes lost across ${data.houseFlips.toLocaleString("en-US")} flips the site played` : "The site did not play any flips in range", value: data.botNet },
-    { label: "Coinflip tax", hint: "Rake taken from the loser's items", value: data.flipTax },
-    { label: "Jackpot tax", hint: "Rake taken from each pot", value: data.jackpotTax },
+    { label: "Bot wins", hint: "Amount generated from the site bot winning flips", value: data.botWins },
+    { label: "Bot losses", hint: data.houseFlips ? `Paid out when the site bot lost, across ${data.houseFlips.toLocaleString("en-US")} flips it played` : "The site bot did not play in range", value: data.botLosses },
+    { label: "Coinflip tax", hint: "5% rake on the whole pot", value: data.flipTax },
+    { label: "Jackpot tax", hint: "5% rake on each pot", value: data.jackpotTax },
   ];
   const scale = Math.max(...rowsSpec.map((r) => Math.abs(r.value)), 1);
 
