@@ -90,3 +90,57 @@ export type JackpotRound = {
   houseNet: number | null;
   partial: boolean;
 };
+
+/** Where the house's net came from over the range. Components sum to `total`. */
+export type ProfitBreakdown = {
+  /** House bot's own coinflip results: stakes won minus stakes lost, before tax. */
+  botNet: number;
+  flipTax: number;
+  jackpotTax: number;
+  total: number;
+  houseFlips: number;
+  /** Some rounds in range carry an estimated tax rather than one reported by the site. */
+  estimated: boolean;
+};
+
+export type HighlightPlayer = { name: string; avatar: string | null; house: boolean };
+
+export type Highlight = {
+  amount: number;
+  at: string; // ISO
+  game: "coinflip" | "jackpot";
+  roundId: string;
+  /** Short line under the amount, e.g. "Lyon beat JIMMY". */
+  caption: string;
+  players: HighlightPlayer[];
+};
+
+export type Highlights = {
+  biggestFlip: Highlight | null;
+  biggestPlayerWin: Highlight | null;
+  biggestSiteWin: Highlight | null;
+};
+
+/** One live tick for a casino page: the moving buckets, the small aggregates, and rounds newer than the client's cursor. */
+export type LiveCasino = {
+  at: string;
+  summary: Summary;
+  tail: Point[];
+  games: GameStat[];
+  players: PlayerStat[];
+  breakdown: ProfitBreakdown;
+  records: Highlights;
+  flips: CoinflipRound[];
+  pots: JackpotRound[];
+};
+
+/** One live tick for the overview. */
+export type LiveOverview = {
+  at: string;
+  sites: SiteCard[];
+  totals: Summary;
+  aggTail: Point[];
+  siteTails: Record<string, Point[]>;
+  games: GameStat[];
+  players: (PlayerStat & { site: string })[];
+};

@@ -23,6 +23,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       series={Object.fromEntries(tracked.map((slug, i) => [slug, perSite[i]]))}
       games={games}
       players={players}
+      renderedAt={new Date().toISOString()}
     />
   );
 }

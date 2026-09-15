@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { CasinoView } from "@/components/views/casino";
 import { CASINOS, getCasinoMeta } from "@/lib/casinos";
-import { parseRange, recentCoinflips, recentJackpots, series, statuses, summary, topGames, topPlayers, trackedSites } from "@/lib/queries";
+import { highlights, parseRange, profitBreakdown, recentCoinflips, recentJackpots, series, statuses, summary, topGames, topPlayers, trackedSites } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +23,19 @@ export default async function Page({ params, searchParams }: Props) {
   const range = parseRange(sp.range);
   const [tracked, st] = await Promise.all([trackedSites(), statuses()]);
   if (!tracked.includes(slug)) {
-    return <CasinoView meta={meta} range={range} tracked={false} summary={null} series={[]} players={[]} games={[]} status={null} flips={[]} pots={[]} />;
+    return <CasinoView meta={meta} range={range} tracked={false} summary={null} series={[]} players={[]} games={[]} status={null} flips={[]} pots={[]} breakdown={null} records={null} renderedAt={new Date().toISOString()} />;
   }
-  const [s, pts, players, games, flips, pots] = await Promise.all([summary(slug, range), series(slug, range), topPlayers(slug, range, 10), topGames(slug, range), recentCoinflips(slug, range), recentJackpots(slug, range)]);
-  return <CasinoView meta={meta} range={range} tracked summary={s} series={pts} players={players} games={games} status={st[slug] ?? null} flips={flips} pots={pots} />;
+  const [s, pts, players, games, flips, pots, breakdown, records] = await Promise.all([
+    summary(slug, range),
+    series(slug, range),
+    topPlayers(slug, range, 10),
+    topGames(slug, range),
+    recentCoinflips(slug, range),
+    recentJackpots(slug, range),
+    profitBreakdown(slug, range),
+    highlights(slug, range),
+  ]);
+  return (
+    <CasinoView meta={meta} range={range} tracked summary={s} series={pts} players={players} games={games} status={st[slug] ?? null} flips={flips} pots={pots} breakdown={breakdown} records={records} renderedAt={new Date().toISOString()} />
+  );
 }

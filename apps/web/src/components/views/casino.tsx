@@ -13,8 +13,11 @@ import { NetChart } from "@/components/charts/net-chart";
 import { GameShare } from "@/components/charts/game-share";
 import { TopPlayersTable } from "@/components/top-players-table";
 import { RoundsTable } from "@/components/rounds-table";
+import { ProfitBreakdownCard } from "@/components/profit-breakdown";
+import { HighlightsCard } from "@/components/highlights";
+import { useLiveCasino } from "@/lib/live-client";
 import { count, countShort, money, moneyShort } from "@/lib/format";
-import type { CasinoMeta, CoinflipRound, GameStat, JackpotRound, PlayerStat, Point, Range, SiteStatus, Summary } from "@/lib/types";
+import type { CasinoMeta, CoinflipRound, GameStat, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteStatus, Summary } from "@/lib/types";
 
 export type CasinoData = {
   meta: CasinoMeta;
@@ -27,7 +30,13 @@ export type CasinoData = {
   status: SiteStatus | null;
   flips: CoinflipRound[];
   pots: JackpotRound[];
+  breakdown: ProfitBreakdown | null;
+  records: Highlights | null;
+  /** When the server produced these props; the live poll starts from here. */
+  renderedAt: string;
 };
+
+const RANGE_LABEL: Record<Range, string> = { 1: "last 24 hours", 7: "last 7 days", 30: "last 30 days", 90: "last 90 days" };
 
 function ago(iso: string | null) {
   if (!iso) return "never";
@@ -37,7 +46,8 @@ function ago(iso: string | null) {
   return `${Math.round(s / 3600)}h ago`;
 }
 
-export function CasinoView({ meta: casino, range, tracked, summary: s, series, players, games, status, flips, pots }: CasinoData) {
+export function CasinoView(initial: CasinoData) {
+  const { meta: casino, range, tracked, summary: s, series, players, games, status, flips, pots, breakdown, records } = useLiveCasino(initial);
   const hourly = range === 1;
   const best = series.length ? [...series].sort((a, b) => b.wagered - a.wagered)[0] : null;
   const worst = series.length ? [...series].sort((a, b) => a.net - b.net)[0] : null;
@@ -92,6 +102,13 @@ export function CasinoView({ meta: casino, range, tracked, summary: s, series, p
             <KpiCard label="Loss" value={s.loss} format={money} hint={hourly ? "Paid out across losing hours" : "Paid out across losing days"} tone="bad" />
             <KpiCard label="Net" value={s.net} format={money} delta={s.deltaNet ?? undefined} hint={s.wagered ? `${((s.net / s.wagered) * 100).toFixed(2)}% realized edge` : undefined} />
           </div>
+
+          {breakdown && records ? (
+            <div className="grid gap-4 lg:grid-cols-5">
+              <Reveal className="lg:col-span-2"><ProfitBreakdownCard data={breakdown} color={casino.color} /></Reveal>
+              <Reveal className="lg:col-span-3"><HighlightsCard data={records} color={casino.color} rangeLabel={RANGE_LABEL[range]} /></Reveal>
+            </div>
+          ) : null}
 
           <Reveal>
             <Card>

@@ -73,6 +73,19 @@ within minutes, so it is not worth the browser it takes to mint.
 `TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
 `TRANSPORT=socketio` (plain client) remain as fallbacks for other sites.
 
+## Live updates
+
+Pages are server-rendered once, then kept current by the client. Each page
+seeds a TanStack Query cache with its server props and polls
+`/api/live?site=<slug|all>&range=<n>&since=<ISO>` every 3 seconds while
+the tab is visible. A tick returns only what moves: the current and previous
+bucket of the chart, the small aggregates (KPIs, top players, top games,
+records, profit breakdown) and rounds settled after `since`. The client merges
+them into the data it already holds, so a tick is a few kilobytes and a few
+milliseconds of database time regardless of range. Long-range numbers come
+from the continuous aggregates, where completed days are materialized; only
+today is computed live.
+
 ## Importing legacy history
 
 `apps/collector/src/backfill` pulls the old scraper's Postgres into this

@@ -13,6 +13,7 @@ import { NetChart } from "@/components/charts/net-chart";
 import { count, countShort, money, moneyShort, pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { GameStat, PlayerStat, Point, Range, SiteCard, Summary } from "@/lib/types";
+import { useLiveOverview } from "@/lib/live-client";
 
 export type OverviewData = {
   range: Range;
@@ -22,11 +23,14 @@ export type OverviewData = {
   series: Record<string, Point[]>;
   games: GameStat[];
   players: (PlayerStat & { site: string })[];
+  /** When the server produced these props; the live poll starts from here. */
+  renderedAt: string;
 };
 
 const rangeLabel = (r: Range) => (r === 1 ? "last 24 hours" : `last ${r} days`);
 
-export function OverviewView({ range, sites, totals: s, agg, series, games, players }: OverviewData) {
+export function OverviewView(initial: OverviewData) {
+  const { range, sites, totals: s, agg, series, games, players } = useLiveOverview(initial);
   const tracked = sites.filter((x) => x.tracked);
   const ranked = [...tracked].sort((a, b) => (b.summary?.wagered ?? 0) - (a.summary?.wagered ?? 0));
   const gameMax = games[0]?.wagered ?? 1;

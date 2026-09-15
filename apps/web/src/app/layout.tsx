@@ -5,6 +5,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
+import { LiveProvider } from "@/lib/live-client";
 import { siteCards } from "@/lib/queries";
 import "./globals.css";
 
@@ -24,6 +25,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}>
       <body className="min-h-full">
+        <LiveProvider>
         <TooltipProvider>
           <SidebarProvider>
             <Suspense>
@@ -37,6 +39,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </SidebarInset>
           </SidebarProvider>
         </TooltipProvider>
+        </LiveProvider>
       </body>
     </html>
   );
