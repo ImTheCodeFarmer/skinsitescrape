@@ -9,7 +9,8 @@ services:
       POSTGRES_DB: casino
     volumes:
       - dbdata:/var/lib/postgresql/data
-    command: postgres -c shared_preload_libraries=timescaledb -c max_connections=50
+    # dynamic_shared_memory_type=mmap keeps parallel workers off the 64 MB /dev/shm a container gets by default.
+    command: postgres -c shared_preload_libraries=timescaledb -c max_connections=50 -c dynamic_shared_memory_type=mmap -c max_wal_size=2GB
 
 volumes:
   dbdata:
