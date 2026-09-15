@@ -12,7 +12,7 @@ export type RunOptions = {
   dryRun: boolean;
   /** Overrides every computed cutoff. */
   until: Date | null;
-  /** Start from this legacy id instead of the saved cursor (the saved cursor still only moves forward). */
+  /** Re-walk from this legacy id. The saved cursor is left untouched, so a partial re-walk can never hide a gap. */
   from: bigint | null;
 };
 
@@ -70,6 +70,8 @@ export async function runSource(src: Source, opts: RunOptions, deps: Deps): Prom
 
   const progress = await loadProgress(db, src.name);
   let cursor = opts.from ?? progress.cursor;
+  const persist = !opts.dryRun && opts.from == null;
+  if (opts.from != null) log.warn({ from: String(opts.from), savedCursor: String(progress.cursor) }, "re-walking from --from; saved cursor will not be updated");
 
   const cutoffs: Record<string, Date | null> = {};
   for (const [key, spec] of Object.entries(src.cutoffs ?? {})) {
@@ -96,7 +98,7 @@ export async function runSource(src: Source, opts: RunOptions, deps: Deps): Prom
     const rows = (await legacy.unsafe(query, [String(cursor), opts.tailMinutes, opts.batch])) as unknown as Record<string, unknown>[];
     spent.fetchMs += Date.now() - t;
     if (!rows.length) {
-      if (!opts.dryRun) await saveProgress(db, src.name, cursor, 0, true);
+      if (persist) await saveProgress(db, src.name, cursor, 0, true);
       log.info({ read, ...ctx.stats, seconds: Math.round((Date.now() - started) / 1000) }, "caught up");
       return true;
     }
@@ -115,7 +117,7 @@ export async function runSource(src: Source, opts: RunOptions, deps: Deps): Prom
     cursor = BigInt(String(rows[rows.length - 1][idCol]));
     read += rows.length;
     batches++;
-    if (!opts.dryRun) await saveProgress(db, src.name, cursor, rows.length, false);
+    if (persist) await saveProgress(db, src.name, cursor, rows.length, false);
     if (batches % 10 === 0 || opts.maxBatches) {
       const secs = (Date.now() - started) / 1000;
       log.info({ cursor: String(cursor), read, ...ctx.stats, rowsPerSec: Math.round(read / Math.max(secs, 1)), ...spent }, "progress");
@@ -126,7 +128,7 @@ export async function runSource(src: Source, opts: RunOptions, deps: Deps): Prom
     }
     if (rows.length < opts.batch) {
       // Short page: we are at the live edge. Mark caught up and stop rather than poll.
-      if (!opts.dryRun) await saveProgress(db, src.name, cursor, 0, true);
+      if (persist) await saveProgress(db, src.name, cursor, 0, true);
       log.info({ read, ...ctx.stats }, "caught up");
       return true;
     }

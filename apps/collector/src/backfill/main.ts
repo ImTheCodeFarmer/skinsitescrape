@@ -8,7 +8,7 @@
  *   pnpm --filter collector backfill -- --list       # sources and saved progress
  *   pnpm --filter collector backfill -- --sources rustypot --max-batches 5 --dry-run
  *   pnpm --filter collector backfill -- --refresh-caggs
- *   pnpm --filter collector backfill -- --sources rustypot --from 2100000   # restart the walk at a legacy id
+ *   pnpm --filter collector backfill -- --sources rustypot --from 2100000   # re-walk from a legacy id (saved cursor untouched)
  *
  * A failed write stops the run with the cursor left before the failed batch,
  * so a rerun retries exactly the rows that were dropped.
