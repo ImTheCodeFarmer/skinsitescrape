@@ -72,7 +72,9 @@ const byName = new Map(SOURCES.map((s) => [s.name, s]));
 const wanted = args.sources.length ? args.sources : DEFAULT_SOURCES;
 for (const n of wanted) if (!byName.has(n)) throw new Error(`unknown source "${n}" (known: ${SOURCES.map((s) => s.name).join(", ")})`);
 
-const { db, close } = createDb(process.env.DATABASE_URL, { max: 2 });
+// Replays can upsert into chunks the compression policies have already
+// compressed; lift TimescaleDB's per-transaction decompression cap for this session.
+const { db, close } = createDb(process.env.DATABASE_URL, { max: 2, connection: { "timescaledb.max_tuples_decompressed_per_dml_transaction": 0 } });
 
 if (args.list) {
   const progress = new Map((await listProgress(db)).map((p) => [String(p.source), p]));

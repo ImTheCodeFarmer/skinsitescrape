@@ -46,6 +46,7 @@ export type CoinflipRow = {
   opponentTotal?: number | null;
   houseInvolved?: boolean;
   winnerId?: string | null;
+  winnerHouse?: boolean;
   winningSide?: number | null;
   potUsd?: number | null;
   taxUsd?: number | null;
@@ -62,6 +63,7 @@ export type JackpotRow = {
   potUsd?: number | null;
   entries?: number | null;
   winnerId?: string | null;
+  winnerHouse?: boolean;
   winnerTicket?: number | null;
   taxUsd?: number | null;
   houseNetUsd?: number | null;
@@ -86,6 +88,8 @@ export class Sink {
   private coinflips = new Map<string, CoinflipRow>();
   private jackpots = new Map<string, JackpotRow>();
   private jackpotEntries = new Map<string, JackpotEntryRow>();
+  /** Coinflip lobbies withdrawn before a flip: site|externalId. */
+  private removed = new Set<string>();
   private timer: NodeJS.Timeout;
   private flushing: Promise<void> = Promise.resolve();
   readonly recordRaw: boolean;
@@ -119,6 +123,13 @@ export class Sink {
   coinflip(row: CoinflipRow) {
     const k = `${row.site}|${row.externalId}`;
     this.coinflips.set(k, { ...this.coinflips.get(k), ...row });
+  }
+  /**
+   * Mark a lobby as removed without knowing its created_at (part of the
+   * key). Applied as an UPDATE; a lobby we never saw is simply skipped.
+   */
+  coinflipRemoved(site: string, externalId: string) {
+    this.removed.add(`${site}|${externalId}`);
   }
   jackpot(row: JackpotRow) {
     const k = `${row.site}|${row.externalId}`;
@@ -167,6 +178,8 @@ export class Sink {
     this.jackpots.clear();
     const entries = [...this.jackpotEntries.values()];
     this.jackpotEntries.clear();
+    const removed = [...this.removed].map((k) => k.split("|") as [string, string]);
+    this.removed.clear();
     this.counts.raw += raw.length;
     this.counts.players += players.length;
     this.counts.bets += bets.length;
@@ -198,21 +211,21 @@ export class Sink {
     if (coinflips.length) {
       await this.write("coinflips", coinflips, () => this.db.execute(sql`
         INSERT INTO coinflips (site, external_id, created_at, status, hash, creator_id, creator_pick, creator_total,
-          opponent_id, opponent_total, house_involved, winner_id, winning_side, pot_usd, tax_usd, house_net_usd, settled_at, updated_at, meta)
+          opponent_id, opponent_total, house_involved, winner_id, winner_house, winning_side, pot_usd, tax_usd, house_net_usd, settled_at, updated_at, meta)
         SELECT site, external_id, created_at, status, hash, creator_id, creator_pick, creator_total,
-          opponent_id, opponent_total, house_involved, winner_id, winning_side, pot_usd, tax_usd, house_net_usd, settled_at, now(), meta
+          opponent_id, opponent_total, house_involved, winner_id, winner_house, winning_side, pot_usd, tax_usd, house_net_usd, settled_at, now(), meta
         FROM json_to_recordset(${j(
           coinflips.map((c) => ({
             site: c.site, external_id: c.externalId, created_at: c.createdAt, status: c.status, hash: c.hash ?? null,
             creator_id: c.creatorId ?? null, creator_pick: c.creatorPick ?? null, creator_total: c.creatorTotal ?? null,
             opponent_id: c.opponentId ?? null, opponent_total: c.opponentTotal ?? null, house_involved: c.houseInvolved ?? false,
-            winner_id: c.winnerId ?? null, winning_side: c.winningSide ?? null, pot_usd: c.potUsd ?? null, tax_usd: c.taxUsd ?? null,
+            winner_id: c.winnerId ?? null, winner_house: c.winnerHouse ?? false, winning_side: c.winningSide ?? null, pot_usd: c.potUsd ?? null, tax_usd: c.taxUsd ?? null,
             house_net_usd: c.houseNetUsd ?? null, settled_at: c.settledAt ?? null, meta: c.meta ?? null,
           })),
         )}::json) AS x(site text, external_id text, created_at timestamptz, status text, hash text, creator_id text, creator_pick int,
-          creator_total numeric, opponent_id text, opponent_total numeric, house_involved boolean, winner_id text, winning_side int,
+          creator_total numeric, opponent_id text, opponent_total numeric, house_involved boolean, winner_id text, winner_house boolean, winning_side int,
           pot_usd numeric, tax_usd numeric, house_net_usd numeric, settled_at timestamptz, meta jsonb)
-        ON CONFLICT (site, external_id) DO UPDATE SET
+        ON CONFLICT (site, external_id, created_at) DO UPDATE SET
           -- "Ended" is final: the site also emits RemoveLobby after a flip finishes.
           status         = CASE WHEN coinflips.status = 'Ended' THEN coinflips.status ELSE EXCLUDED.status END,
           hash           = COALESCE(EXCLUDED.hash, coinflips.hash),
@@ -223,6 +236,7 @@ export class Sink {
           opponent_total = COALESCE(EXCLUDED.opponent_total, coinflips.opponent_total),
           house_involved = coinflips.house_involved OR EXCLUDED.house_involved,
           winner_id      = COALESCE(EXCLUDED.winner_id, coinflips.winner_id),
+          winner_house   = coinflips.winner_house OR EXCLUDED.winner_house,
           winning_side   = COALESCE(EXCLUDED.winning_side, coinflips.winning_side),
           pot_usd        = COALESCE(EXCLUDED.pot_usd, coinflips.pot_usd),
           tax_usd        = COALESCE(EXCLUDED.tax_usd, coinflips.tax_usd),
@@ -231,24 +245,31 @@ export class Sink {
           updated_at     = now(),
           meta           = COALESCE(EXCLUDED.meta, coinflips.meta)`));
     }
+    if (removed.length) {
+      await this.write("coinflips(removed)", removed, () => this.db.execute(sql`
+        UPDATE coinflips c SET status = 'Removed', updated_at = now()
+        FROM json_to_recordset(${j(removed.map(([site, id]) => ({ site, external_id: id })))}::json) AS x(site text, external_id text)
+        WHERE c.site = x.site AND c.external_id = x.external_id AND c.status <> 'Ended'`));
+    }
     if (jackpots.length) {
       await this.write("jackpots", jackpots, () => this.db.execute(sql`
-        INSERT INTO jackpots (site, external_id, created_at, status, hash, pot_usd, entries, winner_id, winner_ticket, tax_usd, house_net_usd, settled_at, updated_at, meta)
-        SELECT site, external_id, created_at, status, hash, pot_usd, entries, winner_id, winner_ticket, tax_usd, house_net_usd, settled_at, now(), meta
+        INSERT INTO jackpots (site, external_id, created_at, status, hash, pot_usd, entries, winner_id, winner_house, winner_ticket, tax_usd, house_net_usd, settled_at, updated_at, meta)
+        SELECT site, external_id, created_at, status, hash, pot_usd, entries, winner_id, winner_house, winner_ticket, tax_usd, house_net_usd, settled_at, now(), meta
         FROM json_to_recordset(${j(
           jackpots.map((c) => ({
             site: c.site, external_id: c.externalId, created_at: c.createdAt, status: c.status, hash: c.hash ?? null,
-            pot_usd: c.potUsd ?? null, entries: c.entries ?? null, winner_id: c.winnerId ?? null, winner_ticket: c.winnerTicket ?? null,
+            pot_usd: c.potUsd ?? null, entries: c.entries ?? null, winner_id: c.winnerId ?? null, winner_house: c.winnerHouse ?? false, winner_ticket: c.winnerTicket ?? null,
             tax_usd: c.taxUsd ?? null, house_net_usd: c.houseNetUsd ?? null, settled_at: c.settledAt ?? null, meta: c.meta ?? null,
           })),
         )}::json) AS x(site text, external_id text, created_at timestamptz, status text, hash text, pot_usd numeric, entries int,
-          winner_id text, winner_ticket numeric, tax_usd numeric, house_net_usd numeric, settled_at timestamptz, meta jsonb)
-        ON CONFLICT (site, external_id) DO UPDATE SET
+          winner_id text, winner_house boolean, winner_ticket numeric, tax_usd numeric, house_net_usd numeric, settled_at timestamptz, meta jsonb)
+        ON CONFLICT (site, external_id, created_at) DO UPDATE SET
           status        = EXCLUDED.status,
           hash          = COALESCE(EXCLUDED.hash, jackpots.hash),
           pot_usd       = COALESCE(EXCLUDED.pot_usd, jackpots.pot_usd),
           entries       = COALESCE(EXCLUDED.entries, jackpots.entries),
           winner_id     = COALESCE(EXCLUDED.winner_id, jackpots.winner_id),
+          winner_house  = jackpots.winner_house OR EXCLUDED.winner_house,
           winner_ticket = COALESCE(EXCLUDED.winner_ticket, jackpots.winner_ticket),
           tax_usd       = COALESCE(EXCLUDED.tax_usd, jackpots.tax_usd),
           house_net_usd = COALESCE(EXCLUDED.house_net_usd, jackpots.house_net_usd),

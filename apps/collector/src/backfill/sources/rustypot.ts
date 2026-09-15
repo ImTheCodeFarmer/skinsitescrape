@@ -11,6 +11,7 @@
  * derived and jackpot volume before the live collector is absent from the
  * wager rollups.
  */
+import { objectIdTime } from "@casino/db";
 import { LEGACY_META, date, groupBy, moneyFor, num, round4, str } from "../config.js";
 import type { Row, Source, SourceCtx } from "../types.js";
 
@@ -38,8 +39,9 @@ function coinflip(r: Row, items: Item[] | undefined, ctx: SourceCtx) {
   const id = str(r.game_internal_id);
   const creatorId = str(r.creator_user_id);
   const opponentId = str(r.opponent_user_id);
-  const createdAt = date(r.game_created_at) ?? date(r.created_at)!;
   if (!id || !creatorId || !opponentId) return ctx.stats.skipped++;
+  // Hypertable key: created_at derives from the id, the same way the live adapter does it.
+  const createdAt = objectIdTime(id) ?? date(r.game_created_at) ?? date(r.created_at)!;
   const cutoff = ctx.cutoffs.coinflip;
   if (cutoff && createdAt >= cutoff) return ctx.stats.skipped++;
 
@@ -58,8 +60,9 @@ function coinflip(r: Row, items: Item[] | undefined, ctx: SourceCtx) {
   const ended = !!winnerId;
   let tax: number | null = null;
   let houseNet: number | null = null;
+  let winnerIsHouse = false;
   if (ended) {
-    const winnerIsHouse = (winnerId === creatorId && creatorHouse) || (winnerId === opponentId && opponentHouse);
+    winnerIsHouse = (winnerId === creatorId && creatorHouse) || (winnerId === opponentId && opponentHouse);
     const loserTotal = winnerId === creatorId ? opponentTotal : creatorTotal;
     const houseStake = creatorHouse ? creatorTotal : opponentHouse ? opponentTotal : 0;
     if (winnerIsHouse) {
@@ -83,6 +86,7 @@ function coinflip(r: Row, items: Item[] | undefined, ctx: SourceCtx) {
     opponentTotal,
     houseInvolved: creatorHouse || opponentHouse,
     winnerId,
+    winnerHouse: winnerIsHouse,
     potUsd: pot,
     taxUsd: tax,
     houseNetUsd: houseNet,
@@ -90,6 +94,7 @@ function coinflip(r: Row, items: Item[] | undefined, ctx: SourceCtx) {
     meta: {
       ...LEGACY_META,
       legacyId: Number(r.id),
+      createDate: str(r.game_created_at),
       winnerChance: winnerId === creatorId ? str(r.creator_chance) : str(r.joiner_chance),
       serverSeed: str(r.game_server_seed),
       ticket: str(r.game_ticket),
@@ -127,8 +132,8 @@ function coinflip(r: Row, items: Item[] | undefined, ctx: SourceCtx) {
 
 function jackpot(r: Row, ctx: SourceCtx) {
   const id = str(r.game_internal_id);
-  const createdAt = date(r.game_created_at) ?? date(r.created_at)!;
   if (!id) return ctx.stats.skipped++;
+  const createdAt = objectIdTime(id) ?? date(r.game_created_at) ?? date(r.created_at)!;
   const cutoff = ctx.cutoffs.jackpot;
   if (cutoff && createdAt >= cutoff) return ctx.stats.skipped++;
   const tax = usd(r.tax_collected);

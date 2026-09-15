@@ -9,6 +9,7 @@
  * deposits (pre-tax), so house_net is recorded at JACKPOT_TAX_RATE and
  * flagged as estimated in meta.
  */
+import { objectIdTime } from "@casino/db";
 import type { AdapterContext } from "../../core/adapter.js";
 import { SITE, HOUSE_ID } from "./coinflip.js";
 import type { RpJackpotDeposit, RpJackpotResult, RpJackpotWinnerInfo } from "./types.js";
@@ -74,16 +75,18 @@ export function handleJackpotWinner(payload: unknown, receivedAt: Date, ctx: Ada
   ctx.sink.jackpot({
     site: SITE,
     externalId: w._id,
-    createdAt: live.startedAt,
+    // created_at is part of the hypertable key; derive it from the id so every message about this round merges.
+    createdAt: objectIdTime(w._id) ?? live.startedAt,
     status: "Ended",
     hash: live.hash,
     potUsd: pot,
     entries: entries.length,
     winnerId: winner?.player.id ?? null,
+    winnerHouse: winnerIsHouse,
     taxUsd: winnerIsHouse ? 0 : tax,
     houseNetUsd: entries.length && !partial ? houseNet : null,
     settledAt: receivedAt,
-    meta: { winnerName: w.name, winnerChance: w.chance, taxEstimated: true, unmatchedWinner: !winner, partial, depositSum },
+    meta: { winnerName: w.name, winnerChance: w.chance, taxEstimated: true, unmatchedWinner: !winner, partial, depositSum, startedAt: live.startedAt },
   });
 
   for (const e of entries) {
@@ -120,7 +123,7 @@ export function handleJackpotReset(payload: unknown, receivedAt: Date, ctx: Adap
   ctx.sink.jackpot({
     site: SITE,
     externalId: r.id,
-    createdAt: receivedAt, // ignored on conflict; only inserts if winnerInfo was missed
+    createdAt: objectIdTime(r.id) ?? receivedAt,
     status: "Ended",
     potUsd: typeof r.potTotal === "number" ? round4(r.potTotal) : null,
     winnerTicket: typeof r.ticket === "number" ? r.ticket : null,
@@ -137,7 +140,7 @@ export function handleJackpotHistory(payload: unknown, receivedAt: Date, ctx: Ad
     ctx.sink.jackpot({
       site: SITE,
       externalId: r.id,
-      createdAt: receivedAt,
+      createdAt: objectIdTime(r.id) ?? receivedAt,
       status: "Ended",
       potUsd: typeof r.potTotal === "number" ? round4(r.potTotal) : null,
       winnerTicket: typeof r.ticket === "number" ? r.ticket : null,

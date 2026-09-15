@@ -7,10 +7,21 @@ export { sql, eq, and, desc, gte, lt } from "drizzle-orm";
 
 export type Db = ReturnType<typeof createDb>["db"];
 
-export function createDb(url = process.env.DATABASE_URL, opts: { max?: number } = {}) {
+/**
+ * Mongo ObjectIds carry their creation time in the first 4 bytes. Rustypot
+ * round ids are ObjectIds, and the hypertable keys on coinflips/jackpots
+ * include created_at, so every writer derives created_at from the id this
+ * way to keep upserts merging. Returns null for other id formats.
+ */
+export function objectIdTime(id: string): Date | null {
+  return /^[0-9a-f]{24}$/i.test(id) ? new Date(parseInt(id.slice(0, 8), 16) * 1000) : null;
+}
+
+export function createDb(url = process.env.DATABASE_URL, opts: { max?: number; connection?: Record<string, string | number | boolean> } = {}) {
   if (!url) throw new Error("DATABASE_URL is not set");
   const client = postgres(url, {
     max: opts.max ?? 10,
+    connection: opts.connection,
     idle_timeout: 30,
     prepare: false,
     transform: { undefined: null },

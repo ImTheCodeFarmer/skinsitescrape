@@ -15,8 +15,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function refreshAggregates(db: Db, log: Logger, opts: { pauseMs: number; from?: Date | null }) {
   let from = opts.from ?? null;
   if (!from) {
-    const rows = (await db.execute(sql`SELECT min(placed_at) AS t FROM bets WHERE meta ? 'legacy'`)) as unknown as { t: string | null }[];
+    const rows = (await db.execute(sql`SELECT min(bucket) AS t FROM bets_daily`)) as unknown as { t: string | null }[];
     from = rows[0]?.t ? new Date(rows[0].t) : null;
+    if (!from) {
+      const raw = (await db.execute(sql`SELECT min(placed_at) AS t FROM bets`)) as unknown as { t: string | null }[];
+      from = raw[0]?.t ? new Date(raw[0].t) : null;
+    }
   }
   if (!from) {
     log.info("no legacy bets, nothing to refresh");
@@ -27,7 +31,11 @@ export async function refreshAggregates(db: Db, log: Logger, opts: { pauseMs: nu
     { view: "bets_hourly", endOffsetDays: 3, stepDays: 7 },
     { view: "player_daily", endOffsetDays: 3, stepDays: 7 },
     { view: "bets_daily", endOffsetDays: 7, stepDays: 30 }, // stacked on bets_hourly, so after it
+    { view: "bets_daily_records", endOffsetDays: 7, stepDays: 30 },
+    { view: "flips_daily", endOffsetDays: 7, stepDays: 30 },
+    { view: "jackpots_daily", endOffsetDays: 7, stepDays: 30 },
   ];
+  // Finish with the streak job so its windows see the refreshed data.
   for (const p of plan) {
     const end = new Date(Date.now() - p.endOffsetDays * DAY);
     let cur = new Date(Math.floor(from.getTime() / DAY) * DAY);
@@ -43,4 +51,6 @@ export async function refreshAggregates(db: Db, log: Logger, opts: { pauseMs: nu
     }
     log.info({ view: p.view, windows: n, from: from.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) }, "aggregate refreshed");
   }
+  await db.execute(sql`CALL refresh_streaks(0, NULL)`);
+  log.info("streaks recomputed");
 }

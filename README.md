@@ -32,10 +32,21 @@ See "Getting past Cloudflare" for how the collector connects.
 | `bets` | Generic fact table, one row per player per settled round, any game (hypertable). |
 | `coinflips`, `jackpots`, `jackpot_entries` | Game-specific detail. |
 | `bets_hourly`, `bets_daily`, `player_daily` | Continuous aggregates. The dashboard reads these. |
+| `flips_daily`, `jackpots_daily`, `bets_daily_records` | Daily rake, house-bot wins/losses and per-day maxima; the profit breakdown and records read these. |
+| `streaks` | Longest coinflip win streak per site and window, recomputed hourly by the `refresh_streaks` TimescaleDB job. |
 | `collector_status` | Heartbeat per site so gaps in the data can be flagged. |
 
 Money columns are USD as reported by the site. House net is `wagered − payout`
 over real players, so tax and house-bot wins both land in it.
+
+`coinflips` and `jackpots` are hypertables keyed by `(site, external_id,
+created_at)`, so `created_at` must be a pure function of the round id:
+writers derive it with `objectIdTime()` (Rustypot ids are Mongo ObjectIds).
+Completed days live in the aggregates; only today is computed live, so page
+cost does not grow with the range. After any backfill, reparse or migration
+that creates a new aggregate, run `pnpm --filter collector backfill
+--refresh-caggs` once to materialize history (the policies only look back a
+few days); it also recomputes `streaks`.
 
 ## Getting past Cloudflare (socket only, no browser)
 

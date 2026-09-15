@@ -92,6 +92,8 @@ export const coinflips = pgTable(
     opponentTotal: numeric("opponent_total", { precision: 14, scale: 4 }),
     houseInvolved: boolean("house_involved").notNull().default(false),
     winnerId: text("winner_id"),
+    /** The house bot won. Stored so daily aggregates need no join to players. */
+    winnerHouse: boolean("winner_house").notNull().default(false),
     winningSide: integer("winning_side"),
     potUsd: numeric("pot_usd", { precision: 14, scale: 4 }),
     taxUsd: numeric("tax_usd", { precision: 14, scale: 4 }),
@@ -101,9 +103,11 @@ export const coinflips = pgTable(
     meta: jsonb("meta"),
   },
   (t) => [
-    primaryKey({ columns: [t.site, t.externalId] }),
+    // Hypertable: the key includes the time column, so created_at must be a pure function of external_id.
+    primaryKey({ columns: [t.site, t.externalId, t.createdAt] }),
     index("coinflips_created_idx").on(t.site, t.createdAt),
     index("coinflips_status_idx").on(t.site, t.status),
+    index("coinflips_external_idx").on(t.site, t.externalId),
   ],
 );
 
@@ -118,6 +122,7 @@ export const jackpots = pgTable(
     potUsd: numeric("pot_usd", { precision: 14, scale: 4 }),
     entries: integer("entries"),
     winnerId: text("winner_id"),
+    winnerHouse: boolean("winner_house").notNull().default(false),
     winnerTicket: numeric("winner_ticket", { precision: 14, scale: 4 }),
     taxUsd: numeric("tax_usd", { precision: 14, scale: 4 }),
     houseNetUsd: numeric("house_net_usd", { precision: 14, scale: 4 }),
@@ -126,9 +131,26 @@ export const jackpots = pgTable(
     meta: jsonb("meta"),
   },
   (t) => [
-    primaryKey({ columns: [t.site, t.externalId] }),
+    primaryKey({ columns: [t.site, t.externalId, t.createdAt] }),
     index("jackpots_created_idx").on(t.site, t.createdAt),
+    index("jackpots_external_idx").on(t.site, t.externalId),
   ],
+);
+
+/** Longest coinflip win streak per site and trailing window, recomputed hourly by the refresh_streaks job. */
+export const streaks = pgTable(
+  "streaks",
+  {
+    site: text("site").notNull(),
+    days: integer("days").notNull(),
+    playerId: text("player_id"),
+    streak: integer("streak").notNull().default(0),
+    profitUsd: numeric("profit_usd", { precision: 14, scale: 4 }).notNull().default("0"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.site, t.days] })],
 );
 
 export const jackpotEntries = pgTable(

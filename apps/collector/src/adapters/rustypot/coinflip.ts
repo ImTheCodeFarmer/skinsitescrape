@@ -1,3 +1,4 @@
+import { objectIdTime } from "@casino/db";
 import type { AdapterContext } from "../../core/adapter.js";
 import type { RpCoinflip, RpSide, RpItem } from "./types.js";
 
@@ -19,7 +20,8 @@ const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 export function handleCoinflip(cf: RpCoinflip, receivedAt: Date, ctx: AdapterContext) {
   if (!cf?._id || !cf.creator?.id) return;
-  const createdAt = cf.createDate ? new Date(cf.createDate) : receivedAt;
+  // created_at is part of the hypertable key, so it must be derivable from the id alone (see objectIdTime).
+  const createdAt = objectIdTime(cf._id) ?? (cf.createDate ? new Date(cf.createDate) : receivedAt);
   const opponent = cf.opponent && cf.opponent.id ? cf.opponent : null;
   const creatorHouse = isHouseSide(cf.creator);
   const opponentHouse = isHouseSide(opponent);
@@ -36,10 +38,11 @@ export function handleCoinflip(cf: RpCoinflip, receivedAt: Date, ctx: AdapterCon
   let taxUsd: number | null = null;
   let houseNetUsd: number | null = null;
 
+  let winnerIsHouse = false;
   if (ended && opponent && creatorTotal != null && opponentTotal != null) {
     const winnerId = cf.winner!.id;
     potUsd = round4(creatorTotal + opponentTotal);
-    const winnerIsHouse = (winnerId === cf.creator.id && creatorHouse) || (winnerId === opponent.id && opponentHouse);
+    winnerIsHouse = (winnerId === cf.creator.id && creatorHouse) || (winnerId === opponent.id && opponentHouse);
     const loserTotal = winnerId === cf.creator.id ? opponentTotal : creatorTotal;
     const houseStake = creatorHouse ? creatorTotal : opponentHouse ? opponentTotal : 0;
 
@@ -65,6 +68,7 @@ export function handleCoinflip(cf: RpCoinflip, receivedAt: Date, ctx: AdapterCon
     opponentTotal,
     houseInvolved: creatorHouse || opponentHouse,
     winnerId: cf.winner?.id ?? null,
+    winnerHouse: winnerIsHouse,
     winningSide: typeof cf.winner?.coin === "number" ? cf.winner.coin : null,
     potUsd,
     taxUsd,
@@ -72,6 +76,7 @@ export function handleCoinflip(cf: RpCoinflip, receivedAt: Date, ctx: AdapterCon
     settledAt,
     meta: ended
       ? {
+          createDate: cf.createDate,
           winnerChance: cf.winner?.chance,
           serverSeed: cf.hash?.serverSeed,
           ticket: cf.hash?.ticket,
@@ -108,7 +113,7 @@ export function handleCoinflip(cf: RpCoinflip, receivedAt: Date, ctx: AdapterCon
 }
 
 /** "cf RemoveLobby": lobby withdrawn before a flip. Mark it so it never counts. */
-export function handleCoinflipRemoved(id: unknown, receivedAt: Date, ctx: AdapterContext) {
+export function handleCoinflipRemoved(id: unknown, _receivedAt: Date, ctx: AdapterContext) {
   if (typeof id !== "string") return;
-  ctx.sink.coinflip({ site: SITE, externalId: id, createdAt: receivedAt, status: "Removed" });
+  ctx.sink.coinflipRemoved(SITE, id);
 }
