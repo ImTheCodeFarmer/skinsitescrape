@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Flame } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PlayerStat } from "@/lib/types";
 import { count, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ function initials(h: string) {
   return h.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "?";
 }
 
-export function TopPlayersTable({ players, color, limit = 10 }: { players: PlayerStat[]; color: string; limit?: number }) {
+export function TopPlayersTable({ players, color, limit = 10, rangeDays }: { players: PlayerStat[]; color: string; limit?: number; rangeDays?: number }) {
   if (!players.length) return <p className="px-4 py-8 text-center text-sm text-muted-foreground">No settled bets in this range yet.</p>;
   return (
     <Table>
@@ -49,9 +50,17 @@ export function TopPlayersTable({ players, color, limit = 10 }: { players: Playe
                 )}
                 <span className="max-w-[14rem] truncate font-medium">{p.handle}</span>
                 {p.activeDays >= 5 ? (
-                  <Badge variant="outline" className="gap-1 border-orange-500/30 px-1.5 py-0 text-[10px] text-orange-400">
-                    <Flame className="size-2.5" /> {p.activeDays}d
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="h-4 cursor-default gap-1 border-orange-500/30 px-1.5 py-0 text-[10px] leading-none text-orange-400">
+                        <Flame className="size-2.5 shrink-0" />
+                        <span className="leading-none">{p.activeDays}d</span>
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      Placed bets on {p.activeDays} {rangeDays ? `of the last ${rangeDays} ` : ""}days
+                    </TooltipContent>
+                  </Tooltip>
                 ) : null}
               </span>
             </TableCell>

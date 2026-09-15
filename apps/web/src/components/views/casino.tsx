@@ -139,7 +139,7 @@ export function CasinoView(initial: CasinoData) {
                   <CardTitle>Top players</CardTitle>
                   <CardDescription>By total wagered in range</CardDescription>
                 </CardHeader>
-                <CardContent className="px-2"><TopPlayersTable players={players} color={casino.color} /></CardContent>
+                <CardContent className="px-2"><TopPlayersTable players={players} color={casino.color} rangeDays={range === 1 ? undefined : range} /></CardContent>
               </Card>
             </Reveal>
             <Reveal className="lg:col-span-2">
