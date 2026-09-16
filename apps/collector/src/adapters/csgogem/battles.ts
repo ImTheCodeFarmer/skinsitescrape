@@ -2,9 +2,14 @@
  * Case battles. The feed gives the full lobby on `battle.list` (on subscribe)
  * and `battle.onNewGame`, seats as they fill on `battle.onWager`, a
  * `battle.onGameSpin` per round whose last one carries `payouts` (cents won
- * per user), and `battle.onGameEnd`. Bets are written at game end: stake is
- * the seat price the player actually paid (borrow mode already deducted),
- * payout comes from the final spin. House bots ("bot-N") are is_house rows.
+ * per user), and `battle.onGameEnd`. Bets are written at game end. House
+ * bots ("bot-N") are is_house rows.
+ *
+ * Borrow mode: a player can have the site lend `borrowModifier` percent of
+ * the seat. The feed's `amount` is what they actually paid (seat × the
+ * remaining share) and `payouts` is the seat's full winnings, of which the
+ * player keeps only that same share; the lender keeps the rest. The bet row
+ * stores the player's share as payout and the seat's gross in meta.
  */
 import type { AdapterContext } from "../../core/adapter.js";
 import { SITE, isBot, seen, usd } from "./site.js";
@@ -83,7 +88,9 @@ export function handleBattleEnd(payload: unknown, receivedAt: Date, ctx: Adapter
   }
   const roundId = String(e.battleID);
   for (const w of b.wagers.values()) {
-    const payout = b.payouts[w.userID] ?? 0;
+    const gross = b.payouts[w.userID] ?? 0;
+    const borrow = Math.min(100, Math.max(0, Number(w.borrowModifier) || 0));
+    const payout = Math.round(gross * (1 - borrow / 100));
     ctx.sink.bet({
       site: SITE,
       game: "battles",
@@ -98,7 +105,8 @@ export function handleBattleEnd(payload: unknown, receivedAt: Date, ctx: Adapter
       settledAt: receivedAt,
       meta: {
         slot: w.slot,
-        borrowModifier: w.borrowModifier ?? 0,
+        borrowModifier: borrow,
+        grossPayoutCents: gross,
         seatCents: b.info.amount,
         teamSize: b.info.teamSize,
         seats: b.info.userCount,
