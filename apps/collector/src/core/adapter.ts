@@ -20,6 +20,13 @@ export interface SiteAdapter {
     headers?: Record<string, string>;
     /** Page to load in the browser transport. Defaults to the site origin. */
     pageUrl?: string;
+    /**
+     * Wire protocol. "socketio" (default) appends the Engine.IO path and
+     * query and frames events as "42[...]". "raw" connects to `url` verbatim
+     * and frames as JSON arrays `[id, event, data]` (csgogem). Only the wstap
+     * transport speaks "raw".
+     */
+    protocol?: "socketio" | "raw";
   };
   /** Called once per (re)connect. Subscribe to feeds here. */
   onConnect?(ctx: AdapterContext): void;

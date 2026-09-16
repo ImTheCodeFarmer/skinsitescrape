@@ -53,6 +53,8 @@ export type CasinoMeta = {
   tagline: string;
   founded: number;
   currency: "USD" | "Coins";
+  /** Short note on modes the site offers but the collector cannot see. */
+  untracked?: string;
 };
 
 export type SiteCard = {

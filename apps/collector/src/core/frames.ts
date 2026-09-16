@@ -12,3 +12,22 @@ export function parseSocketIoFrame(s: string): { event: string; args: unknown[] 
     return null;
   }
 }
+
+/**
+ * Parse a raw `[id, event, data]` frame (csgogem's protocol). Server pushes
+ * carry id -1; replies to our requests carry the id we sent, with `event`
+ * null on success or an error name ("MalformedRequest") on failure. Replies
+ * are surfaced as event "ack" (or the error name) with args [data, id].
+ */
+export function parseRawFrame(s: string): { event: string; args: unknown[] } | null {
+  if (!s.startsWith("[")) return null;
+  try {
+    const arr = JSON.parse(s);
+    if (!Array.isArray(arr) || arr.length < 2) return null;
+    const [id, ev, data] = arr as [number, string | null, unknown];
+    const event = typeof ev === "string" ? ev : "ack";
+    return typeof id === "number" && id >= 1 ? { event, args: [data, id] } : { event, args: data === undefined ? [] : [data] };
+  } catch {
+    return null;
+  }
+}

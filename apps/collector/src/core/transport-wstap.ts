@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { Logger } from "pino";
 import type { SiteAdapter } from "./adapter.js";
-import { parseSocketIoFrame } from "./frames.js";
+import { parseRawFrame, parseSocketIoFrame } from "./frames.js";
 import type { TransportHooks, Transport } from "./transport.js";
 
 function findBinary(): string {
@@ -47,11 +47,14 @@ const HUNT_MAX = Number(process.env.PROXY_HUNT_MAX ?? 40); // refusals in a row 
 
 export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: Logger, proxyUrl?: string): Transport {
   const bin = findBinary();
-  const { url, path = "/socket.io/" } = adapter.connection;
+  const { url, path = "/socket.io/", protocol = "socketio" } = adapter.connection;
+  const raw = protocol === "raw";
   const wsUrl = new URL(url);
-  wsUrl.pathname = path;
-  wsUrl.search = "?EIO=4&transport=websocket";
-  const origin = wsUrl.origin.replace(/^ws/, "http");
+  if (!raw) {
+    wsUrl.pathname = path;
+    wsUrl.search = "?EIO=4&transport=websocket";
+  }
+  const origin = (adapter.connection.pageUrl ? new URL(adapter.connection.pageUrl).origin : wsUrl.origin).replace(/^ws/, "http");
   let hunting = Boolean(proxyUrl) && process.env.PROXY_STICKY !== "false" && !/_session-/.test(new URL(proxyUrl!).username);
   let refusals = 0;
   let proxy = stickyProxy(proxyUrl, adapter.site, 0);
@@ -62,6 +65,8 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
   let delay = 2_000;
   let lastFrame = 0;
   let watchdog: NodeJS.Timeout | null = null;
+  /** Request id for the raw protocol; the server echoes it on the reply. */
+  let seq = 0;
 
   const setConnected = (v: boolean, reason = "") => {
     if (v && !connected) {
@@ -79,6 +84,7 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
     if (proxy) args.push("-proxy", proxy);
     child = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
     lastFrame = Date.now();
+    seq = 0;
     log.info({ proxy: Boolean(proxy), session: proxy ? new URL(proxy).username.split("_session-")[1] ?? null : null }, "wstap spawned");
 
     createInterface({ input: child.stdout! }).on("line", (line) => {
@@ -89,19 +95,27 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
       } catch {
         return;
       }
-      if (d.startsWith("40")) {
+      if (!raw && d.startsWith("40")) {
         if (refusals) log.info({ refusals }, "found a clean proxy exit");
         refusals = 0;
         setConnected(true);
         delay = 2_000;
         return;
       }
-      const parsed = parseSocketIoFrame(d);
+      const parsed = raw ? parseRawFrame(d) : parseSocketIoFrame(d);
       if (parsed) hooks.onEvent({ event: parsed.event, args: parsed.args, receivedAt: new Date() });
     });
     createInterface({ input: child.stderr! }).on("line", (line) => {
-      if (line.startsWith("connected:")) log.info(line);
-      else {
+      if (line.startsWith("connected:")) {
+        log.info(line);
+        if (raw) {
+          // No namespace handshake on a raw socket: the upgrade itself is the connect.
+          if (refusals) log.info({ refusals }, "found a clean proxy exit");
+          refusals = 0;
+          setConnected(true);
+          delay = 2_000;
+        }
+      } else {
         log.warn({ wstap: line }, "wstap");
         hooks.onError(line);
       }
@@ -146,7 +160,7 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
   return {
     emit: (event, ...args) => {
       if (!child?.stdin?.writable) return;
-      child.stdin.write("42" + JSON.stringify([event, ...args]) + "\n");
+      child.stdin.write((raw ? JSON.stringify([++seq, event, args[0]]) : "42" + JSON.stringify([event, ...args])) + "\n");
     },
     close: async () => {
       closed = true;

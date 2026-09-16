@@ -7,15 +7,17 @@
  *   clash, rustclash  cents of gems, 1 gem = $0.60   (rust_clash_case_battle_last7days_stats)
  *   cases             cents of USD                   (calculate_casesgg_case_battle_winnings)
  *   rustypot          USD already
+ *   csgogem           cents of coins, 1 coin = $0.60 (the site's own USD fx
+ *                     rate on its socket, app.onFxRateUpdate, 2026-09-15)
  * Assumed (no legacy conversion existed, prices look like cents):
- *   csgogem, rustyloot, banditcamp, rustmagic  cents, 1 coin = $1
+ *   rustyloot, banditcamp, rustmagic  cents, 1 coin = $1
  */
 const DEFAULT_USD_PER_UNIT: Record<string, number> = {
   rustypot: 1,
   clash: 0.6 / 100,
   rustclash: 0.6 / 100,
   cases: 1 / 100,
-  csgogem: 1 / 100,
+  csgogem: 0.6 / 100,
   rustyloot: 1 / 100,
   banditcamp: 1 / 100,
   rustmagic: 1 / 100,

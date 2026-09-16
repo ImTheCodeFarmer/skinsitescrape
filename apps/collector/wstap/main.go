@@ -393,6 +393,13 @@ func main() {
 	}{br, conn})
 	var msg bytes.Buffer
 	var compressed bool
+	// permessage-deflate with context takeover (the default we offer, as Chrome
+	// does): the server's LZ77 window persists across messages, so each message
+	// may back-reference the previous ones' plaintext. Inflating each message
+	// with the last 32 KiB of decompressed output as the dictionary reproduces
+	// that window. Servers that use no_context_takeover never reference it, so
+	// the same code handles both.
+	var window []byte
 	for {
 		hdr, err := ws.ReadHeader(rw)
 		if err != nil {
@@ -421,10 +428,14 @@ func main() {
 		}
 		data := msg.Bytes()
 		if compressed && deflate {
-			fr := flate.NewReader(bytes.NewReader(append(append([]byte{}, data...), 0x00, 0x00, 0xff, 0xff)))
+			fr := flate.NewReaderDict(bytes.NewReader(append(append([]byte{}, data...), 0x00, 0x00, 0xff, 0xff)), window)
 			inflated, err := io.ReadAll(fr)
-			if err != nil && len(inflated) == 0 {
+			if err != nil && err != io.ErrUnexpectedEOF && len(inflated) == 0 {
 				fatal(5, "inflate: %v", err)
+			}
+			window = append(window, inflated...)
+			if len(window) > 32768 {
+				window = append([]byte(nil), window[len(window)-32768:]...)
 			}
 			data = inflated
 		}

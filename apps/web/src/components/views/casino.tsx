@@ -71,6 +71,7 @@ export function CasinoView(initial: CasinoData) {
                 ) : null}
               </div>
               <p className="text-sm text-muted-foreground">{casino.tagline}</p>
+              {casino.untracked ? <p className="text-xs text-muted-foreground/70">{casino.untracked}</p> : null}
             </div>
             {s ? (
               <div className="hidden gap-6 text-sm md:flex">

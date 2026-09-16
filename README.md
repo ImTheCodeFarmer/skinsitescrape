@@ -82,7 +82,36 @@ through, but it is bound to the minting IP and the pool's sessions rotate
 within minutes, so it is not worth the browser it takes to mint.
 
 `TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
-`TRANSPORT=socketio` (plain client) remain as fallbacks for other sites.
+`TRANSPORT=socketio` (plain client) remain as fallbacks for Socket.IO sites;
+only `wstap` speaks the raw protocol CSGOGem uses.
+
+## CSGOGem
+
+`wss://api.csgogem.com/` is a plain websocket, not Socket.IO: every frame is
+`[id, event, data]`. The client sends `[n, "subscribe", ["battle", ...]]`
+and gets `[n, null, {battle: true}]` back (an error name in place of `null`
+otherwise). Server pushes carry id `-1`. The adapter declares
+`protocol: "raw"` and `wstap` connects to the URL verbatim; there was no
+Cloudflare challenge on this host as of 2026-09-15, so it works with or
+without a proxy. The server compresses with permessage-deflate *with context
+takeover*, which is why `wstap` keeps the last 32 KiB of inflated output as
+the dictionary for the next message.
+
+Money on the wire is cents of the site coin; the coin's USD price arrives on
+`app.onFxRateUpdate` (0.60 when this was written) and the adapter converts
+with the live rate.
+
+| Mode | Namespace | What we get | `game` |
+|---|---|---|---|
+| Case battles | `battle` | Full lobbies, seats, final `payouts`, game end. House bots are `bot-N` (`is_house`). | `battles` |
+| Slide | `slide` | Round, wager deltas, winning multiplier. Payout = floor(stake × target) when target ≤ result. | `slide` |
+| Double | `roulette` | Round, per-user colour totals, winning colour. Red/black 2×, green 14×. | `roulette` |
+
+**Not tracked:** upgrader, mines and tiles (keno) only broadcast wins on the
+public socket (`upgrade.onWin`, `mines.onLiveGame`, `keno.onLiveGame`), so
+neither volume nor house net can be measured, and case openings are not on
+the socket at all (`case` is rejected). The dashboard says so on the
+CSGOGem page.
 
 ## Live updates
 
