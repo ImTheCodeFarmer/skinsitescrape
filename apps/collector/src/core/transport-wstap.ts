@@ -47,13 +47,13 @@ const HUNT_MAX = Number(process.env.PROXY_HUNT_MAX ?? 40); // refusals in a row 
 
 export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: Logger, proxyUrl?: string): Transport {
   const bin = findBinary();
-  const { url, path = "/socket.io/", protocol = "socketio" } = adapter.connection;
+  const { url, path = "/socket.io/", protocol = "socketio", query = {} } = adapter.connection;
   /** Anything but Socket.IO: the upgrade itself is the connect, no Engine.IO handshake. */
   const raw = protocol !== "socketio";
   const wsUrl = new URL(url);
   if (!raw) {
     wsUrl.pathname = path;
-    wsUrl.search = "?EIO=4&transport=websocket";
+    wsUrl.search = new URLSearchParams({ ...query, EIO: "4", transport: "websocket" }).toString();
   }
   const origin = (adapter.connection.pageUrl ? new URL(adapter.connection.pageUrl).origin : wsUrl.origin).replace(/^ws/, "http");
   let hunting = Boolean(proxyUrl) && process.env.PROXY_STICKY !== "false" && !/_session-/.test(new URL(proxyUrl!).username);

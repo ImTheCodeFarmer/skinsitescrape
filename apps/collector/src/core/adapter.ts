@@ -16,6 +16,8 @@ export interface SiteAdapter {
   connection: {
     url: string;
     path?: string;
+    /** Extra query parameters on the Engine.IO URL (rusteasy wants `userStatus=guest`). */
+    query?: Record<string, string>;
     /** Extra headers sent on the upgrade request. */
     headers?: Record<string, string>;
     /** Page to load in the browser transport. Defaults to the site origin. */

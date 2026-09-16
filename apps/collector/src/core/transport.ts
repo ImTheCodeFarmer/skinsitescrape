@@ -33,12 +33,13 @@ export function connectSocketIo(adapter: SiteAdapter, hooks: TransportHooks, log
 }
 
 export function connectRaw(adapter: SiteAdapter, hooks: TransportHooks, log: Logger, proxyUrl?: string): Socket {
-  const { url, path = "/socket.io/", headers = {} } = adapter.connection;
+  const { url, path = "/socket.io/", headers = {}, query } = adapter.connection;
   const origin = new URL(url).origin.replace(/^ws/, "http");
   const agent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
 
   const socket = io(url, {
     path,
+    query,
     transports: ["websocket"],
     agent: agent as unknown as string | undefined,
     reconnection: true,

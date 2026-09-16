@@ -1,7 +1,7 @@
 # casino-stats
 
 Dashboard plus collector for skin-casino activity (Clash.gg, RustClash,
-Rustyloot, Rustypot, Cases.gg, CSGOGem). pnpm monorepo.
+Rustyloot, Rustypot, Cases.gg, CSGOGem, RustEasy). pnpm monorepo.
 
 ```
 apps/web         Next.js + shadcn dashboard (currently on sample data)
@@ -143,6 +143,28 @@ shared house players `bot-1`, `bot-2`, …
 
 **Not tracked:** mystery box openings and the upgrader have no public feed
 (HTTP only). `battles:double-down` and `battles:awaiting-eos` are raw only.
+
+## RustEasy
+
+Socket.IO at `wss://api.rusteasy.com/socket.io/` with `userStatus=guest` on
+the query (`connection.query`); the `sid` a browser adds is Engine.IO's own
+session id and is never sent. Behind Cloudflare, fine through `wstap` without
+a proxy as of 2026-09-16. Feeds are rooms joined with `joinRoom <name>`;
+many payloads are JSON strings and are unwrapped by the adapter. Money is
+USD ("gems", 1:1). The house plays as "Tunnel Dweller" (steamid64 `0`) in
+coinflip, jackpot and champion; battle bots are `bot-<seat>`.
+
+| Mode | Room / events | Settlement | `game` |
+|---|---|---|---|
+| Case battles | `casebattles`: `newCaseBattle` (twice: created, then started with seats), `battles:round` (a drop per seat and the running `unboxed_amount`), `battles:finished` | Every seat pays `total_value`, less `borrow_percent` of it for real players when the creator turned borrow mode on. Winning seats split the final unboxed amount; shared mode splits it over everyone, cursed and jackpot modes only change who `winner` names. Team modes seat 1..n/2 on team 1. Battles already running at connect are skipped. | `battles` |
+| Coinflip | `coinflip`: `newCoinflipGame`, `coinflipGameUpdate` (status 2 joined, 4 finished with `winner_side`) | Winner takes both stakes less the fee: the event's `fee` if present, else the FAQ's 7% (`taxEstimated`). | `coinflip` |
+| Jackpot | `jackpot`: `newDeposit` (whole round), `slider` (draw with winner), `newGame` | Each player's deposits summed; winner takes the pot less an estimated 7% (FAQ). | `jackpot` |
+| Double | `roullete`: `roullete_bet`, `roullete_slider` | 0 gold 14x, 1 and 14 bait 7x, other evens red and odds black 2x (the client's own scoring). No round id on the feed: a round is named by its spin's `received_at` and placed at its first bet. | `roulette` |
+| Champion | `champion`: `challengerInfo` opens a fight, `championEnd` closes it, `newChampionInfo` / `champion` name the holder, who is the winner | Both sides stake their totals; winner takes the pot less an estimated 10% (FAQ). | `champion` |
+
+**Not tracked:** cases, upgrader, mines and bust (blackjack) are private HTTP
+games; their only public trace is the `live.wins` ticker (wins only), kept
+raw.
 
 ## Live updates
 
