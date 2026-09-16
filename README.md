@@ -183,6 +183,15 @@ server-side. `SESSION_SECRET` signs the cookie (a key derived from
 `DATABASE_URL` is used when it is unset) and `NEXT_PUBLIC_SITE_URL` fixes
 the return address when the app sits behind a proxy.
 
+### Admin
+
+`/admin` lists every Steam account that has signed in (`site_users`, one
+row per account with first and last sign-in and a count, written by the
+Steam return route). Only the Steam ids in `ADMIN_STEAM_IDS` (comma-separated;
+defaults to the owner's id in `lib/auth.ts`) can open it; everyone else gets
+a 404, and the sidebar shows the Admin link only to them. Migration
+`0010_site_users.sql` creates the table.
+
 ## Live updates
 
 Pages are server-rendered once, then kept current by the client. Each page

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, ShieldCheck } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -14,7 +14,7 @@ import { moneyShort, pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { SiteCard } from "@/lib/types";
 
-export function AppSidebar({ sites }: { sites: SiteCard[] }) {
+export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?: boolean }) {
   const pathname = usePathname();
   const params = useSearchParams();
   const qs = params.get("range") ? `?range=${params.get("range")}` : "";
@@ -45,6 +45,16 @@ export function AppSidebar({ sites }: { sites: SiteCard[] }) {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {admin ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={pathname === "/admin"}>
+                    <Link href="/admin">
+                      <ShieldCheck className="size-4" />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ) : null}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

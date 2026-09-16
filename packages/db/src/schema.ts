@@ -176,3 +176,13 @@ export const collectorStatus = pgTable("collector_status", {
   lastError: text("last_error"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Steam accounts that have signed in to the dashboard. Sessions are cookie-only; this is the roster. */
+export const siteUsers = pgTable("site_users", {
+  steamId: text("steam_id").primaryKey(),
+  name: text("name"),
+  avatar: text("avatar"),
+  firstLogin: timestamp("first_login", { withTimezone: true }).notNull().defaultNow(),
+  lastLogin: timestamp("last_login", { withTimezone: true }).notNull().defaultNow(),
+  logins: integer("logins").notNull().default(1),
+});

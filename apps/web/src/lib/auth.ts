@@ -67,6 +67,10 @@ export const sessionCookie = (s: Session) => ({
 /** Ranges beyond a week are for signed-in users. */
 export const rangeNeedsSignIn = (range: number) => range > 7;
 
+/** Steam ids allowed into /admin: ADMIN_STEAM_IDS (comma-separated) or the built-in list. */
+const ADMIN_STEAM_IDS = new Set((process.env.ADMIN_STEAM_IDS ?? "76561199469037234").split(",").map((s) => s.trim()).filter(Boolean));
+export const isAdmin = (s: Session | null | undefined) => !!s && ADMIN_STEAM_IDS.has(s.steamId);
+
 // ---------------------------------------------------------------- Steam OpenID
 
 const STEAM_OPENID = "https://steamcommunity.com/openid/login";

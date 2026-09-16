@@ -5,7 +5,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
-import { getSession } from "@/lib/auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { LiveProvider } from "@/lib/live-client";
 import { siteCards } from "@/lib/queries";
 import "./globals.css";
@@ -30,7 +30,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <TooltipProvider>
           <SidebarProvider>
             <Suspense>
-              <AppSidebar sites={sites} />
+              <AppSidebar sites={sites} admin={isAdmin(session)} />
             </Suspense>
             <SidebarInset className="min-w-0">
               <Suspense>
