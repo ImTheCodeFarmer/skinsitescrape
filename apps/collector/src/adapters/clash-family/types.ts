@@ -132,3 +132,25 @@ export type CgCrashCashout = { betId: number; user?: CgUser; at: number; winning
 export type CgCrashTick = { elapsed: number; at: number; cashouts: CgCrashCashout[] };
 
 export type CgCrashHistoryEntry = { id: number; crashedAt: number; seed: string };
+
+// ---------------------------------------------------------------- roulette (clash.gg)
+
+export type CgRouletteBet = { user: CgUser; currency: CgCurrency; gameId: number; amount: number; option: "RED" | "BLACK" | "GREEN" | "BAIT" | string };
+
+/** Sent on every state change; `outcome` is set once DRAWING. */
+export type CgRouletteRound = { id: number; status: "OPEN" | "DRAWING" | "FINISHED" | string; outcome: number | null; serialId?: number | null; drawsAt?: string; createdAt?: string };
+
+// ---------------------------------------------------------------- plinko (clash.gg)
+
+/** One other player's finished ball. */
+export type CgPlinkoGame = { userId: number; avatarUrl?: string | null; betAmount: number; multiplier: number; currency: CgCurrency; rows?: number; risk?: string; point?: number };
+
+// ---------------------------------------------------------------- champion (clash.gg)
+
+export type CgChampionSide = { id?: number; userId: number; amount: number; currency: CgCurrency; items?: unknown[]; user: CgUser };
+
+/** `champion-match:<TYPE>:round-update`. */
+export type CgChampionRound = { type: "round-update"; sessionId: number; roundId: number; champion?: CgChampionSide; challenger?: CgChampionSide };
+
+/** `champion-match:<TYPE>:match-finish`, field names from the client's payout handler. */
+export type CgChampionFinish = { type?: string; sessionId: number; winner?: { userId: number; currency?: CgCurrency }; paidAmount?: number };

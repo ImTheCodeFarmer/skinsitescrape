@@ -1,7 +1,7 @@
 # casino-stats
 
 Dashboard plus collector for skin-casino activity (Clash.gg, RustClash,
-Rustyloot, Rustypot, Cases.gg, CSGOGem, RustEasy). pnpm monorepo.
+Rustyloot, Rustypot, Cases.gg, Clash.gg, CSGOGem, RustEasy). pnpm monorepo.
 
 ```
 apps/web         Next.js + shadcn dashboard (currently on sample data)
@@ -118,13 +118,36 @@ neither volume nor house net can be measured, and case openings are not on
 the socket at all (`case` is rejected). The dashboard says so on the
 CSGOGem page.
 
-## Cases.gg
+## Cases.gg and Clash.gg (the Clash platform)
 
-Two plain websockets, both `[event, data]` frames (`protocol: "pair"`), both
-behind Cloudflare and both fine through `wstap` without a proxy as of
-2026-09-16. The collector runs them as two connections of the one site
-(`ADAPTERS.cases` is a list); the status row counts the site as connected
+Both sites run the same platform: two plain websockets, both `[event, data]`
+frames (`protocol: "pair"`), both behind Cloudflare and both fine through
+`wstap` without a proxy as of 2026-09-16. The handlers live in
+`adapters/clash-family/` as per-site factories; `adapters/cases` and
+`adapters/clash` are thin configurations. Each site runs as two connections
+(`ADAPTERS.<site>` is a list); the status row counts the site as connected
 only while both are up, and `reparse` replays raw rows through both.
+
+Clash.gg: `wss://ws.clash.gg/` (channels `battles`, `roulette`, `plinko`,
+`champion-match`) and `wss://gs.clash.gg/` for crash. Money is cents of
+gems at **$0.60 per gem** (`GEM_USD`), the legacy dashboard's rate, and
+what the feed's item prices give against Steam prices. Only
+`currency: "REAL"` counts. Clash.gg's HTTP side challenges plain clients,
+so its pages and chunks were read with a Chrome-impersonating fetch; the
+sockets need nothing special.
+
+| Clash.gg mode | Feed | Settlement | `game` |
+|---|---|---|---|
+| Case battles | as Cases.gg below, same loan rule | same | `battles` |
+| Double | `roulette:bet`, `roulette:round` (DRAWING carries `outcome` 0..14) | 0 green 14x, 1..7 red 2x, 8..14 black 2x, and 4 and 11 also pay bait 7x, per the site's client. | `roulette` |
+| Plinko | `plinko:social-game`, one event per other player's ball | bet × multiplier; no round id, so named by arrival time and player. | `plinko` |
+| Champion | `champion-match:<TYPE>:round-update` (a fight: champion and challenger with their stakes) and `:match-finish` (`winner`, `paidAmount`) | Every entrant stakes their `amount` once; the winner is paid `paidAmount`. Sessions joined mid-way (payout above the stakes seen) are skipped. | `champion` |
+| Crash | as Cases.gg | same | `crash` |
+
+**Clash.gg, not tracked:** case openings, the upgrader, mines and tiles are
+private games whose only public trace is the `drops` ticker (wins only).
+
+Cases.gg: `wss://ws.cases.gg/` and `wss://cgs.cases.gg/`, cents of USD.
 
 - `wss://ws.cases.gg/`: send `["subscribe", "battles"]` and
   `["subscribe", "item-coinflip"]` (at most ten channels; `chat`, `rain`,
