@@ -13,11 +13,12 @@ import { NetChart } from "@/components/charts/net-chart";
 import { GameShare } from "@/components/charts/game-share";
 import { TopPlayersTable } from "@/components/top-players-table";
 import { RoundsTable } from "@/components/rounds-table";
-import { ProfitBreakdownCard } from "@/components/profit-breakdown";
+import { BetsTable } from "@/components/bets-table";
+import { GameNetCard, ProfitBreakdownCard } from "@/components/profit-breakdown";
 import { HighlightsCard } from "@/components/highlights";
 import { useLiveCasino } from "@/lib/live-client";
 import { count, countShort, money, moneyShort } from "@/lib/format";
-import type { CasinoMeta, CoinflipRound, GameStat, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteStatus, Summary } from "@/lib/types";
+import type { BetRow, CasinoMeta, CoinflipRound, GameStat, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteStatus, Summary } from "@/lib/types";
 
 export type CasinoData = {
   meta: CasinoMeta;
@@ -30,6 +31,8 @@ export type CasinoData = {
   status: SiteStatus | null;
   flips: CoinflipRound[];
   pots: JackpotRound[];
+  /** Sites without pot games list settled bets instead of rounds. */
+  bets: BetRow[];
   breakdown: ProfitBreakdown | null;
   records: Highlights | null;
   /** When the server produced these props; the live poll starts from here. */
@@ -47,8 +50,9 @@ function ago(iso: string | null) {
 }
 
 export function CasinoView(initial: CasinoData) {
-  const { meta: casino, range, tracked, summary: s, series, players, games, status, flips, pots, breakdown, records } = useLiveCasino(initial);
+  const { meta: casino, range, tracked, summary: s, series, players, games, status, flips, pots, bets, breakdown, records } = useLiveCasino(initial);
   const hourly = range === 1;
+  const hasPots = Boolean(casino.pots);
   const best = series.length ? [...series].sort((a, b) => b.wagered - a.wagered)[0] : null;
   const worst = series.length ? [...series].sort((a, b) => a.net - b.net)[0] : null;
 
@@ -99,8 +103,8 @@ export function CasinoView(initial: CasinoData) {
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard label="Wagered" value={s.wagered} format={money} delta={s.deltaWager ?? undefined} accent={casino.color} />
-            <KpiCard label="Profit" value={s.profit} format={money} hint={hourly ? "House take across winning hours" : "House take across winning days"} tone="good" />
-            <KpiCard label="Loss" value={s.loss} format={money} hint={hourly ? "Paid out across losing hours" : "Paid out across losing days"} tone="bad" />
+            <KpiCard label="Player wins" value={s.playerWins} format={money} hint="Taken home by players on winning bets, net of stake" tone="good" />
+            <KpiCard label="Player losses" value={s.playerLosses} format={money} hint="Stakes lost on losing bets" tone="bad" />
             <KpiCard label="Net" value={s.net} format={money} delta={s.deltaNet ?? undefined} hint={s.wagered ? `${((s.net / s.wagered) * 100).toFixed(2)}% realized edge` : undefined} />
           </div>
 
@@ -128,10 +132,12 @@ export function CasinoView(initial: CasinoData) {
               </CardContent>
             </Card>
           </Reveal>
-          {breakdown ? <Reveal className="lg:col-span-2"><ProfitBreakdownCard data={breakdown} color={casino.color} /></Reveal> : null}
+          <Reveal className="lg:col-span-2">
+            {hasPots && breakdown ? <ProfitBreakdownCard data={breakdown} color={casino.color} /> : <GameNetCard games={games} color={casino.color} />}
+          </Reveal>
           </div>
 
-          {records ? <Reveal><HighlightsCard data={records} color={casino.color} rangeLabel={RANGE_LABEL[range]} /></Reveal> : null}
+          {records ? <Reveal><HighlightsCard data={records} color={casino.color} rangeLabel={RANGE_LABEL[range]} pots={hasPots} /></Reveal> : null}
 
           <div className="grid gap-4 lg:grid-cols-5">
             <Reveal className="lg:col-span-3">
@@ -159,11 +165,11 @@ export function CasinoView(initial: CasinoData) {
           <Reveal>
             <Card>
               <CardHeader>
-                <CardTitle>Recent rounds</CardTitle>
-                <CardDescription>Latest settled games in range, newest first</CardDescription>
+                <CardTitle>{hasPots ? "Recent rounds" : "Recent bets"}</CardTitle>
+                <CardDescription>{hasPots ? "Latest settled games in range, newest first" : "Latest settled bets by players, newest first"}</CardDescription>
               </CardHeader>
               <CardContent className="px-2">
-                <RoundsTable flips={flips} pots={pots} color={casino.color} />
+                {hasPots ? <RoundsTable flips={flips} pots={pots} color={casino.color} /> : <BetsTable bets={bets} color={casino.color} />}
               </CardContent>
             </Card>
           </Reveal>

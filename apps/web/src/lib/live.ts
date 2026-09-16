@@ -1,5 +1,6 @@
 import "server-only";
-import { highlights, profitBreakdown, roundsSince, seriesTail, siteCards, summary, topGames, topPlayers } from "./queries";
+import { getCasinoMeta } from "./casinos";
+import { betsSince, highlights, profitBreakdown, roundsSince, seriesTail, siteCards, summary, topGames, topPlayers } from "./queries";
 import type { LiveCasino, LiveOverview, Range } from "./types";
 
 /**
@@ -9,16 +10,18 @@ import type { LiveCasino, LiveOverview, Range } from "./types";
  * few kilobytes on the wire no matter how long the range is.
  */
 export async function liveCasino(site: string, range: Range, since: string): Promise<LiveCasino> {
-  const [s, tail, games, players, breakdown, records, rounds] = await Promise.all([
+  const pots = Boolean(getCasinoMeta(site)?.pots);
+  const [s, tail, games, players, breakdown, records, rounds, bets] = await Promise.all([
     summary(site, range),
     seriesTail(site, range),
     topGames(site, range),
     topPlayers(site, range, 10),
-    profitBreakdown(site, range),
+    pots ? profitBreakdown(site, range) : null,
     highlights(site, range),
-    roundsSince(site, range, since),
+    pots ? roundsSince(site, range, since) : { flips: [], pots: [] },
+    pots ? [] : betsSince(site, range, since),
   ]);
-  return { at: new Date().toISOString(), summary: s, tail, games, players, breakdown, records, flips: rounds.flips, pots: rounds.pots };
+  return { at: new Date().toISOString(), summary: s, tail, games, players, breakdown, records, flips: rounds.flips, pots: rounds.pots, bets };
 }
 
 export async function liveOverview(range: Range): Promise<LiveOverview> {

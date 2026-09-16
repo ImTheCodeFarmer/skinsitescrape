@@ -1,9 +1,12 @@
 import "server-only";
 import { sql } from "@casino/db";
 import { db } from "./db";
-import { CASINOS, gameLabel } from "./casinos";
+import { CASINOS, gameLabel, getCasinoMeta } from "./casinos";
 import { memo, ttlFor } from "./memo";
-import type { CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteCard, SiteStatus, Summary } from "./types";
+import type { BetRow, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteCard, SiteStatus, Summary } from "./types";
+
+/** Whether a site has coinflip / jackpot detail (rounds tables, breakdown, pot records). */
+const hasPots = (site: string) => Boolean(getCasinoMeta(site)?.pots);
 
 type Row = Record<string, unknown>;
 const n = (v: unknown) => (v == null ? 0 : Number(v));
@@ -101,15 +104,19 @@ async function totals(site: string | null, range: Range, offsetWindows = 0) {
     range === 1
       ? await rows(sql`
           SELECT coalesce(sum(wagered_usd),0) wagered, coalesce(sum(payout_usd),0) payout,
-                 count(DISTINCT player_id) players, count(*) bets
+                 count(DISTINCT player_id) players, count(*) bets,
+                 coalesce(sum(payout_usd - wagered_usd) FILTER (WHERE won), 0) won_profit,
+                 coalesce(sum(wagered_usd) FILTER (WHERE NOT coalesce(won, false)), 0) lost_wagered
           FROM bets WHERE settled_at IS NOT NULL AND NOT is_house
             AND placed_at >= ${from} AND placed_at < ${to} ${siteFilter}`)
       : await rows(sql`
           SELECT coalesce((SELECT sum(wagered_usd) FROM bets_daily WHERE bucket >= ${from} AND bucket < ${to} ${siteFilter}), 0) wagered,
                  coalesce((SELECT sum(payout_usd)  FROM bets_daily WHERE bucket >= ${from} AND bucket < ${to} ${siteFilter}), 0) payout,
                  coalesce((SELECT sum(bets)        FROM bets_daily WHERE bucket >= ${from} AND bucket < ${to} ${siteFilter}), 0) bets,
+                 coalesce((SELECT sum(won_profit_usd)   FROM bets_daily WHERE bucket >= ${from} AND bucket < ${to} ${siteFilter}), 0) won_profit,
+                 coalesce((SELECT sum(lost_wagered_usd) FROM bets_daily WHERE bucket >= ${from} AND bucket < ${to} ${siteFilter}), 0) lost_wagered,
                  (SELECT count(DISTINCT player_id) FROM player_daily WHERE bucket >= ${from} AND bucket < ${to} ${siteFilter}) players`);
-  return { wagered: n(r?.wagered), payout: n(r?.payout), players: n(r?.players), bets: n(r?.bets) };
+  return { wagered: n(r?.wagered), payout: n(r?.payout), players: n(r?.players), bets: n(r?.bets), playerWins: n(r?.won_profit), playerLosses: n(r?.lost_wagered) };
 }
 
 export async function summary(site: string | null, range: Range): Promise<Summary> {
@@ -124,6 +131,8 @@ export async function summary(site: string | null, range: Range): Promise<Summar
     net,
     players: cur.players,
     bets: cur.bets,
+    playerWins: cur.playerWins,
+    playerLosses: cur.playerLosses,
     rtp: cur.wagered ? (cur.payout / cur.wagered) * 100 : 0,
     deltaWager: prev.wagered ? (cur.wagered - prev.wagered) / prev.wagered : null,
     deltaNet: prevNet ? (net - prevNet) / Math.abs(prevNet) : null,
@@ -273,6 +282,31 @@ async function recentJackpotsQuery(site: string, range: Range, limit: number, si
 
 const iso = (v: unknown) => new Date(v as string).toISOString();
 
+export const recentBets = (site: string, range: Range, limit = 25) => memo(`bets:${site}:${range}:${limit}`, ttlFor(range), () => recentBetsQuery(site, range, limit));
+/** Bets settled after `since`, newest first. Uncached: it is the live tail. */
+export const betsSince = (site: string, range: Range, since: string, limit = 25) => recentBetsQuery(site, range, limit, since);
+async function recentBetsQuery(site: string, range: Range, limit: number, since?: string): Promise<BetRow[]> {
+  const hours = range === 1 ? 24 : range * 24;
+  const sinceFilter = since ? sql`AND b.settled_at > ${since}::timestamptz` : sql``;
+  const r = await rows(sql`
+    SELECT b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar
+    FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
+    WHERE b.site = ${site} AND NOT b.is_house AND b.settled_at IS NOT NULL
+      AND b.placed_at >= now() - make_interval(hours => ${hours}) - interval '1 day' AND b.settled_at >= now() - make_interval(hours => ${hours}) ${sinceFilter}
+    ORDER BY b.settled_at DESC LIMIT ${limit}`);
+  return r.map((x) => ({
+    id: `${x.game}:${x.external_id}`,
+    game: String(x.game),
+    roundId: str(x.round_id),
+    placedAt: iso(x.placed_at),
+    settledAt: iso(x.settled_at),
+    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar) },
+    wagered: n(x.wagered_usd),
+    payout: n(x.payout_usd),
+    won: x.won == null ? null : Boolean(x.won),
+  }));
+}
+
 /**
  * Profit breakdown. Long ranges sum the daily aggregates (a row per day);
  * the 24h view sums the day's rounds directly. For a flip the house played,
@@ -359,6 +393,7 @@ function jackpotHighlight(x: Row, amount: number, caption: string): Highlight {
 type RecordRows = {
   flip: Row | undefined;
   playerWin: Row | undefined;
+  playerLoss: Row | undefined;
   houseFlip: Row | undefined;
   houseJackpot: Row | undefined;
   jackpot: Row | undefined;
@@ -369,21 +404,26 @@ type RecordRows = {
 };
 
 /** 24h: one day of rounds, scanned directly. */
+const betSelect = sql`
+  SELECT b.game, b.round_id, b.player_id, b.settled_at, b.placed_at, b.payout_usd, b.wagered_usd, p.display_name, p.avatar
+  FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id`;
+const none = async (): Promise<Row[]> => [];
+
+/** 24h: one day of rounds, scanned directly. Pot queries only run for sites that have pot games. */
 async function recordRowsDirect(site: string, from: ReturnType<typeof sql>, to: ReturnType<typeof sql>): Promise<RecordRows> {
+  const pots = hasPots(site);
   const flipsIn = sql`WHERE c.site = ${site} AND c.status = 'Ended' AND c.created_at >= ${from} AND c.created_at < ${to}`;
   const potsIn = sql`WHERE j.site = ${site} AND j.status = 'Ended' AND j.created_at >= ${from} AND j.created_at < ${to}`;
-  const [[flip], [playerWin], [houseFlip], [houseJackpot], [jackpot], [longShot], [streak], [botLoss], [peak]] = await Promise.all([
-    rows(sql`${flipSelect} ${flipsIn} ORDER BY c.pot_usd DESC NULLS LAST LIMIT 1`),
-    rows(sql`
-      SELECT b.game, b.round_id, b.player_id, b.settled_at, b.placed_at, b.payout_usd, b.wagered_usd, p.display_name, p.avatar
-      FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
-      WHERE b.site = ${site} AND NOT b.is_house AND b.settled_at IS NOT NULL AND b.placed_at >= ${from} AND b.placed_at < ${to}
-      ORDER BY b.payout_usd DESC LIMIT 1`),
-    rows(sql`${flipSelect} ${flipsIn} ORDER BY ${houseGross} DESC NULLS LAST LIMIT 1`),
-    rows(sql`${jackpotSelect} ${potsIn} ORDER BY ${jackpotGross} DESC NULLS LAST LIMIT 1`),
-    rows(sql`${jackpotSelect} ${potsIn} ORDER BY j.pot_usd DESC NULLS LAST LIMIT 1`),
-    rows(sql`${jackpotSelect} ${potsIn} AND (j.meta->>'winnerChance')::numeric > 0 AND j.pot_usd >= 25 ORDER BY (j.meta->>'winnerChance')::numeric ASC, j.pot_usd DESC LIMIT 1`),
-    rows(sql`
+  const betsIn = sql`WHERE b.site = ${site} AND NOT b.is_house AND b.settled_at IS NOT NULL AND b.placed_at >= ${from} AND b.placed_at < ${to}`;
+  const [[flip], [playerWin], [playerLoss], [houseFlip], [houseJackpot], [jackpot], [longShot], [streak], [botLoss], [peak]] = await Promise.all([
+    pots ? rows(sql`${flipSelect} ${flipsIn} ORDER BY c.pot_usd DESC NULLS LAST LIMIT 1`) : none(),
+    rows(sql`${betSelect} ${betsIn} ORDER BY b.payout_usd DESC LIMIT 1`),
+    rows(sql`${betSelect} ${betsIn} AND NOT coalesce(b.won, false) ORDER BY b.wagered_usd DESC LIMIT 1`),
+    pots ? rows(sql`${flipSelect} ${flipsIn} ORDER BY ${houseGross} DESC NULLS LAST LIMIT 1`) : none(),
+    pots ? rows(sql`${jackpotSelect} ${potsIn} ORDER BY ${jackpotGross} DESC NULLS LAST LIMIT 1`) : none(),
+    pots ? rows(sql`${jackpotSelect} ${potsIn} ORDER BY j.pot_usd DESC NULLS LAST LIMIT 1`) : none(),
+    pots ? rows(sql`${jackpotSelect} ${potsIn} AND (j.meta->>'winnerChance')::numeric > 0 AND j.pot_usd >= 25 ORDER BY (j.meta->>'winnerChance')::numeric ASC, j.pot_usd DESC LIMIT 1`) : none(),
+    !pots ? none() : rows(sql`
       WITH f AS (
         SELECT player_id, placed_at, won, payout_usd - wagered_usd AS profit,
                row_number() OVER (PARTITION BY player_id ORDER BY placed_at)
@@ -393,10 +433,10 @@ async function recordRowsDirect(site: string, from: ReturnType<typeof sql>, to: 
         SELECT player_id, count(*) AS streak, sum(profit) AS profit, min(placed_at) AS started, max(placed_at) AS ended
         FROM f WHERE won GROUP BY player_id, grp ORDER BY streak DESC, profit DESC LIMIT 1)
       SELECT s.*, p.display_name, p.avatar FROM s LEFT JOIN players p ON p.site = ${site} AND p.external_id = s.player_id`),
-    rows(sql`${flipSelect} ${flipsIn} AND c.house_involved AND NOT c.winner_house ORDER BY c.pot_usd DESC NULLS LAST LIMIT 1`),
+    pots ? rows(sql`${flipSelect} ${flipsIn} AND c.house_involved AND NOT c.winner_house ORDER BY c.pot_usd DESC NULLS LAST LIMIT 1`) : none(),
     rows(sql`SELECT bucket, sum(wagered_usd) wagered, sum(bets) bets FROM bets_hourly WHERE site = ${site} AND bucket >= ${from} AND bucket < ${to} GROUP BY bucket ORDER BY wagered DESC NULLS LAST LIMIT 1`),
   ]);
-  return { flip, playerWin, houseFlip, houseJackpot, jackpot, longShot, streak, botLoss, peak };
+  return { flip, playerWin, playerLoss, houseFlip, houseJackpot, jackpot, longShot, streak, botLoss, peak };
 }
 
 /**
@@ -405,11 +445,12 @@ async function recordRowsDirect(site: string, from: ReturnType<typeof sql>, to: 
  * round itself from that day. Streaks come from the hourly job's table.
  */
 async function recordRowsDaily(site: string, range: Range, from: ReturnType<typeof sql>, to: ReturnType<typeof sql>): Promise<RecordRows> {
+  const pots = hasPots(site);
   const [flipDays, potDays, betDays, [streakRow], [peak]] = await Promise.all([
-    rows(sql`SELECT bucket, max_pot, max_house_gross, max_bot_loss FROM flips_daily WHERE site = ${site} AND bucket >= ${from} AND bucket < ${to}`),
-    rows(sql`SELECT bucket, max_pot, max_house_gross, min_chance FROM jackpots_daily WHERE site = ${site} AND bucket >= ${from} AND bucket < ${to}`),
-    rows(sql`SELECT bucket, game, max_payout FROM bets_daily_records WHERE site = ${site} AND bucket >= ${from} AND bucket < ${to}`),
-    rows(sql`
+    pots ? rows(sql`SELECT bucket, max_pot, max_house_gross, max_bot_loss FROM flips_daily WHERE site = ${site} AND bucket >= ${from} AND bucket < ${to}`) : none(),
+    pots ? rows(sql`SELECT bucket, max_pot, max_house_gross, min_chance FROM jackpots_daily WHERE site = ${site} AND bucket >= ${from} AND bucket < ${to}`) : none(),
+    rows(sql`SELECT bucket, game, max_payout, max_loss FROM bets_daily_records WHERE site = ${site} AND bucket >= ${from} AND bucket < ${to}`),
+    !pots ? none() : rows(sql`
       SELECT s.player_id, s.streak, s.profit_usd AS profit, s.started_at AS started, s.ended_at AS ended, p.display_name, p.avatar
       FROM streaks s LEFT JOIN players p ON p.site = s.site AND p.external_id = s.player_id
       WHERE s.site = ${site} AND s.days = ${range} AND s.streak > 0`),
@@ -429,8 +470,10 @@ async function recordRowsDaily(site: string, range: Range, from: ReturnType<type
   const dJackGross = best(potDays, "max_house_gross");
   const dShot = best(potDays, "min_chance", "min");
   const dPay = best(betDays, "max_payout");
+  const dLoss2 = best(betDays, "max_loss");
+  const betDay = (d: Row) => sql`AND b.placed_at >= ${dayStart(d.bucket)}::timestamptz AND b.placed_at < ${dayAfter(d.bucket)}::timestamptz`;
 
-  const [[flip], [houseFlip], [botLoss], [jackpot], [houseJackpot], [longShot], [playerWin]] = await Promise.all([
+  const [[flip], [houseFlip], [botLoss], [jackpot], [houseJackpot], [longShot], [playerWin], [playerLoss]] = await Promise.all([
     dPot ? rows(sql`${flipSelect} ${flipIn} ${day(dPot)} AND c.pot_usd = ${String(dPot.max_pot)}::numeric ORDER BY c.created_at LIMIT 1`) : [],
     dGross ? rows(sql`${flipSelect} ${flipIn} ${day(dGross)} AND ${houseGross} = ${String(dGross.max_house_gross)}::numeric ORDER BY c.created_at LIMIT 1`) : [],
     dLoss ? rows(sql`${flipSelect} ${flipIn} ${day(dLoss)} AND c.house_involved AND NOT c.winner_house AND c.pot_usd = ${String(dLoss.max_bot_loss)}::numeric ORDER BY c.created_at LIMIT 1`) : [],
@@ -438,16 +481,15 @@ async function recordRowsDaily(site: string, range: Range, from: ReturnType<type
     dJackGross ? rows(sql`${jackpotSelect} ${potIn} ${jday(dJackGross)} AND ${jackpotGross} = ${String(dJackGross.max_house_gross)}::numeric ORDER BY j.created_at LIMIT 1`) : [],
     dShot ? rows(sql`${jackpotSelect} ${potIn} ${jday(dShot)} AND j.pot_usd >= 25 AND (j.meta->>'winnerChance')::numeric = ${String(dShot.min_chance)}::numeric ORDER BY j.pot_usd DESC LIMIT 1`) : [],
     dPay
-      ? rows(sql`
-          SELECT b.game, b.round_id, b.player_id, b.settled_at, b.placed_at, b.payout_usd, b.wagered_usd, p.display_name, p.avatar
-          FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
-          WHERE b.site = ${site} AND b.game = ${String(dPay.game)} AND NOT b.is_house AND b.settled_at IS NOT NULL
-            AND b.placed_at >= ${dayStart(dPay.bucket)}::timestamptz AND b.placed_at < ${dayAfter(dPay.bucket)}::timestamptz
-            AND b.payout_usd = ${String(dPay.max_payout)}::numeric
-          ORDER BY b.placed_at LIMIT 1`)
+      ? rows(sql`${betSelect} WHERE b.site = ${site} AND b.game = ${String(dPay.game)} AND NOT b.is_house AND b.settled_at IS NOT NULL ${betDay(dPay)}
+            AND b.payout_usd = ${String(dPay.max_payout)}::numeric ORDER BY b.placed_at LIMIT 1`)
+      : [],
+    dLoss2
+      ? rows(sql`${betSelect} WHERE b.site = ${site} AND b.game = ${String(dLoss2.game)} AND NOT b.is_house AND b.settled_at IS NOT NULL ${betDay(dLoss2)}
+            AND NOT coalesce(b.won, false) AND b.wagered_usd = ${String(dLoss2.max_loss)}::numeric ORDER BY b.placed_at LIMIT 1`)
       : [],
   ]);
-  return { flip, playerWin, houseFlip, houseJackpot, jackpot, longShot, streak: streakRow, botLoss, peak };
+  return { flip, playerWin, playerLoss, houseFlip, houseJackpot, jackpot, longShot, streak: streakRow, botLoss, peak };
 }
 
 /** Biggest pot, biggest payouts, biggest house take, longest shot, longest streak and busiest hour in range. */
@@ -455,7 +497,7 @@ export const highlights = (site: string, range: Range) => memo(`records:${site}:
 async function highlightsQuery(site: string, range: Range): Promise<Highlights> {
   const { from, to } = window(range);
   const r = range === 1 ? await recordRowsDirect(site, from, to) : await recordRowsDaily(site, range, from, to);
-  const { flip, playerWin, houseFlip, houseJackpot, jackpot, longShot, streak, botLoss, peak } = r;
+  const { flip, playerWin, playerLoss, houseFlip, houseJackpot, jackpot, longShot, streak, botLoss, peak } = r;
 
   const biggestFlip = flip ? flipHighlight(flip, n(flip.pot_usd)) : null;
 
@@ -464,7 +506,7 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
     ? {
         amount: n(playerWin.payout_usd),
         at: iso(playerWin.settled_at ?? playerWin.placed_at),
-        game: String(playerWin.game) === "jackpot" ? "jackpot" : "coinflip",
+        game: String(playerWin.game),
         roundId: str(playerWin.round_id) ?? "",
         caption: `${str(playerWin.display_name) ?? String(playerWin.player_id)} on ${gameLabel(String(playerWin.game)).toLowerCase()}${staked(playerWin.wagered_usd)}`,
         players: [who(playerWin.display_name, playerWin.player_id, playerWin.avatar, false)],
@@ -474,7 +516,19 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
   const houseFlipGross = houseFlip ? (houseFlip.winner_house ? n(houseFlip.pot_usd) : n(houseFlip.tax_usd)) : -Infinity;
   const houseJackpotGross = houseJackpot ? (houseJackpot.winner_house ? n(houseJackpot.pot_usd) : n(houseJackpot.tax_usd)) : -Infinity;
   let biggestSiteWin: Highlight | null = null;
-  if (houseFlip && houseFlipGross >= houseJackpotGross) {
+  if (!hasPots(site)) {
+    // No house bot or rake to point at: the site's biggest single win is the biggest stake a player lost.
+    biggestSiteWin = playerLoss
+      ? {
+          amount: n(playerLoss.wagered_usd),
+          at: iso(playerLoss.settled_at ?? playerLoss.placed_at),
+          game: String(playerLoss.game),
+          roundId: str(playerLoss.round_id) ?? "",
+          caption: `${str(playerLoss.display_name) ?? String(playerLoss.player_id)} lost on ${gameLabel(String(playerLoss.game)).toLowerCase()}`,
+          players: [who(playerLoss.display_name, playerLoss.player_id, playerLoss.avatar, false)],
+        }
+      : null;
+  } else if (houseFlip && houseFlipGross >= houseJackpotGross) {
     if (houseFlip.winner_house) {
       biggestSiteWin = flipHighlight(houseFlip, houseFlipGross, staked(houseFlip.creator_house ? houseFlip.creator_total : houseFlip.opponent_total));
     } else {

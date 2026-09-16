@@ -4,7 +4,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CasinoData } from "@/components/views/casino";
 import type { OverviewData } from "@/components/views/overview";
-import type { CoinflipRound, JackpotRound, LiveCasino, LiveOverview, Point, Range } from "@/lib/types";
+import type { BetRow, CoinflipRound, JackpotRound, LiveCasino, LiveOverview, Point, Range } from "@/lib/types";
 
 /** Ticks are tiny (a few KB, a few ms of database), so every range polls at the same pace. */
 export const LIVE_INTERVAL_MS = 3_000;
@@ -43,8 +43,8 @@ function mergeRounds<T extends { id: string }>(fresh: T[], prev: T[], limit = 25
   return out;
 }
 
-const newest = (flips: CoinflipRound[], pots: JackpotRound[], fallback: string) =>
-  [...flips, ...pots].reduce((m, r) => (r.settledAt && r.settledAt > m ? r.settledAt : m), fallback);
+const newest = (flips: CoinflipRound[], pots: JackpotRound[], bets: BetRow[], fallback: string) =>
+  [...flips, ...pots, ...bets].reduce((m, r) => (r.settledAt && r.settledAt > m ? r.settledAt : m), fallback);
 
 /**
  * Keeps a casino page current. The server-rendered props seed the cache;
@@ -63,7 +63,7 @@ export function useLiveCasino(initial: CasinoData): CasinoData {
     refetchInterval: LIVE_INTERVAL_MS,
     queryFn: async () => {
       const prev = qc.getQueryData<CasinoData>(key) ?? initial;
-      const since = newest(prev.flips, prev.pots, prev.renderedAt);
+      const since = newest(prev.flips, prev.pots, prev.bets, prev.renderedAt);
       const t = await fetchLive<LiveCasino>({ site: initial.meta.slug, range: String(initial.range), since });
       return {
         ...prev,
@@ -76,6 +76,7 @@ export function useLiveCasino(initial: CasinoData): CasinoData {
         records: t.records,
         flips: mergeRounds(t.flips, prev.flips),
         pots: mergeRounds(t.pots, prev.pots),
+        bets: mergeRounds(t.bets, prev.bets),
       };
     },
   });

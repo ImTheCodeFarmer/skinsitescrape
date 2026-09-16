@@ -18,6 +18,10 @@ export type Summary = {
   net: number;
   players: number; // distinct players in range
   bets: number;
+  /** What winning players took home net of their stakes. */
+  playerWins: number;
+  /** Stakes lost on losing bets. playerLosses − playerWins = net. */
+  playerLosses: number;
   rtp: number; // percent
   deltaWager: number | null; // vs previous window, fraction; null when no prior data
   deltaNet: number | null;
@@ -55,6 +59,8 @@ export type CasinoMeta = {
   currency: "USD" | "Coins";
   /** Short note on modes the site offers but the collector cannot see. */
   untracked?: string;
+  /** Site runs pot games (coinflip / jackpot) with their own detail tables, breakdown and records. */
+  pots?: boolean;
 };
 
 export type SiteCard = {
@@ -114,7 +120,8 @@ export type Highlight = {
   /** How to render `amount`. Default money. */
   format?: "money" | "count";
   at: string; // ISO
-  game: "coinflip" | "jackpot" | "hourly";
+  /** A `bets.game` key, or "hourly" for the busiest-hour tile. */
+  game: string;
   roundId: string;
   /** Short line under the amount, e.g. "Lyon beat JIMMY". */
   caption: string;
@@ -124,6 +131,7 @@ export type Highlight = {
 export type Highlights = {
   biggestFlip: Highlight | null;
   biggestPlayerWin: Highlight | null;
+  /** Pot sites: largest gross the house took from one round. Others: the biggest stake a player lost. */
   biggestSiteWin: Highlight | null;
   biggestJackpot: Highlight | null;
   /** Jackpot won at the lowest chance. */
@@ -136,6 +144,19 @@ export type Highlights = {
   peakHour: Highlight | null;
 };
 
+/** One settled bet by a real player, for the recent-bets table on sites without pot games. */
+export type BetRow = {
+  id: string;
+  game: string;
+  roundId: string | null;
+  placedAt: string;
+  settledAt: string;
+  player: { id: string; name: string; avatar: string | null };
+  wagered: number;
+  payout: number;
+  won: boolean | null;
+};
+
 /** One live tick for a casino page: the moving buckets, the small aggregates, and rounds newer than the client's cursor. */
 export type LiveCasino = {
   at: string;
@@ -143,10 +164,12 @@ export type LiveCasino = {
   tail: Point[];
   games: GameStat[];
   players: PlayerStat[];
-  breakdown: ProfitBreakdown;
+  /** null on sites without pot games */
+  breakdown: ProfitBreakdown | null;
   records: Highlights;
   flips: CoinflipRound[];
   pots: JackpotRound[];
+  bets: BetRow[];
 };
 
 /** One live tick for the overview. */

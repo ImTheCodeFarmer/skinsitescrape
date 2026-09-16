@@ -5,7 +5,7 @@ const color = (slug: string) => LOGO_COLORS[slug as keyof typeof LOGO_COLORS];
 
 /** Static metadata for every site we intend to track. Stats come from the database. */
 export const CASINOS: CasinoMeta[] = [
-  { slug: "rustypot", name: "Rustypot", url: "https://rustypot.com", logo: "/logos/rustypot.png", color: color("rustypot"), tagline: "Jackpot and coinflip", founded: 2020, currency: "USD" },
+  { slug: "rustypot", name: "Rustypot", url: "https://rustypot.com", logo: "/logos/rustypot.png", color: color("rustypot"), tagline: "Jackpot and coinflip", founded: 2020, currency: "USD", pots: true },
   { slug: "clash", name: "Clash.gg", url: "https://clash.gg", logo: "/logos/clash.png", color: color("clash"), tagline: "Case battles, upgrader, plinko", founded: 2022, currency: "USD" },
   { slug: "rustclash", name: "RustClash", url: "https://rustclash.com", logo: "/logos/rustclash.png", color: color("rustclash"), tagline: "Rust skins, battles, roulette", founded: 2022, currency: "USD" },
   { slug: "rustyloot", name: "Rustyloot", url: "https://rustyloot.gg", logo: "/logos/rustyloot.png", color: color("rustyloot"), tagline: "Roulette, crash and jackpot", founded: 2021, currency: "Coins" },

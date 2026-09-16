@@ -4,6 +4,7 @@ import Image from "next/image";
 import { Clock, Clover, Coins, Crown, Flame, Gem, Landmark, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { gameLabel } from "@/lib/casinos";
 import { count, dateTime, money } from "@/lib/format";
 import type { Highlight, HighlightPlayer, Highlights } from "@/lib/types";
 
@@ -17,7 +18,7 @@ function Face({ p, color }: { p: HighlightPlayer; color: string }) {
   );
 }
 
-const GAME_LABEL: Record<Highlight["game"], string> = { coinflip: "Coinflip", jackpot: "Jackpot", hourly: "Hour" };
+const badgeLabel = (game: string) => (game === "hourly" ? "Hour" : gameLabel(game));
 
 function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: string; h: Highlight | null; color: string; tone: string }) {
   return (
@@ -36,7 +37,7 @@ function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: s
             <span className="min-w-0 truncate text-sm" title={h.caption}>{h.caption}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{GAME_LABEL[h.game]}</Badge>
+            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}</Badge>
             {dateTime(h.at)}
           </div>
         </>
@@ -47,24 +48,30 @@ function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: s
   );
 }
 
-export function HighlightsCard({ data, color, rangeLabel }: { data: Highlights; color: string; rangeLabel: string }) {
-  const tiles: { key: keyof Highlights; label: string; icon: React.ReactNode; tone: string }[] = [
-    { key: "biggestFlip", label: "Biggest flip", icon: <Coins className="size-3.5" />, tone: "text-amber-400" },
-    { key: "biggestJackpot", label: "Biggest jackpot", icon: <Gem className="size-3.5" />, tone: "text-violet-400" },
+type TileSpec = { key: keyof Highlights; label: string; icon: React.ReactNode; tone: string; pots?: boolean };
+
+/** `pots` hides the tiles that only make sense with coinflip / jackpot detail (flip, jackpot, bot, streak, long shot). */
+export function HighlightsCard({ data, color, rangeLabel, pots }: { data: Highlights; color: string; rangeLabel: string; pots: boolean }) {
+  const all: TileSpec[] = [
+    { key: "biggestFlip", label: "Biggest flip", icon: <Coins className="size-3.5" />, tone: "text-amber-400", pots: true },
+    { key: "biggestJackpot", label: "Biggest jackpot", icon: <Gem className="size-3.5" />, tone: "text-violet-400", pots: true },
     { key: "biggestPlayerWin", label: "Biggest player win", icon: <Crown className="size-3.5" />, tone: "text-emerald-400" },
     { key: "biggestSiteWin", label: "Biggest site win", icon: <Landmark className="size-3.5" />, tone: "text-rose-400" },
-    { key: "biggestBotLoss", label: "Biggest bot loss", icon: <TrendingDown className="size-3.5" />, tone: "text-orange-400" },
-    { key: "longestShot", label: "Longest shot", icon: <Clover className="size-3.5" />, tone: "text-lime-400" },
-    { key: "longestStreak", label: "Longest win streak", icon: <Flame className="size-3.5" />, tone: "text-red-400" },
+    { key: "biggestBotLoss", label: "Biggest bot loss", icon: <TrendingDown className="size-3.5" />, tone: "text-orange-400", pots: true },
+    { key: "longestShot", label: "Longest shot", icon: <Clover className="size-3.5" />, tone: "text-lime-400", pots: true },
+    { key: "longestStreak", label: "Longest win streak", icon: <Flame className="size-3.5" />, tone: "text-red-400", pots: true },
     { key: "peakHour", label: "Peak hour", icon: <Clock className="size-3.5" />, tone: "text-sky-400" },
   ];
+  const tiles = all.filter((t) => pots || !t.pots);
   return (
     <Card>
       <CardHeader>
         <CardTitle>Records</CardTitle>
-        <CardDescription>Biggest moments in the {rangeLabel}. Amounts are what the winner received.</CardDescription>
+        <CardDescription>
+          Biggest moments in the {rangeLabel}. {pots ? "Amounts are what the winner received." : "Player win is what they received; site win is the biggest stake a player lost."}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <CardContent className={pots ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-4" : "grid gap-3 sm:grid-cols-3"}>
         {tiles.map((t) => <Tile key={t.key} icon={t.icon} label={t.label} h={data[t.key]} color={color} tone={t.tone} />)}
       </CardContent>
     </Card>
