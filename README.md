@@ -269,7 +269,10 @@ compressed chunks.
 3. Register it in `apps/collector/src/adapters/index.ts` and add the site to
    `SITES`.
 4. If a parser was wrong, fix it and run `pnpm --filter collector reparse <site>`
-   to re-derive everything from `raw_events`. All writes are idempotent.
+   to re-derive everything from `raw_events`. All writes are idempotent. In
+   production the same script is `node dist/scripts/reparse.js <site>` inside
+   the collector container (`railway ssh`), after the fixed adapter has been
+   deployed.
 
 ## Rustypot notes
 

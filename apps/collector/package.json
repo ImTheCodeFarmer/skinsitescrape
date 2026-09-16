@@ -13,6 +13,7 @@
     "reparse": "node --conditions=source --env-file=../../.env --import tsx src/scripts/reparse.ts",
     "backfill": "node --conditions=source --env-file=../../.env --import tsx src/backfill/main.ts",
     "backfill:prod": "node dist/backfill/main.js",
+    "reparse:prod": "node dist/scripts/reparse.js",
     "build:wstap": "cd wstap && go build -o wstap ."
   },
   "dependencies": {
