@@ -9,13 +9,20 @@
  * the Rustyloot backfill uses). Team modes (2v2, 3v3) put seats 1..n/2 on
  * team 1. The winning seats split the final unboxed amount equally; shared
  * mode splits it over everyone, cursed and jackpot modes just change who
- * `winner` names. Nothing on the feed says whether a borrowed seat's
- * winnings are docked, so the full share is recorded and `borrowPercent`
- * kept in meta.
+ * `winner` names.
+ *
+ * A borrowed seat keeps only the share it paid for: on 2026-09-16 the
+ * creator of battle CWnl4LuJ4Px7qy8I staked $297.79 of a $1,488.96 seat (80%
+ * borrowed), his team's share was $5,673.63 and the site showed him
+ * receiving $1,134.73, exactly 20%. The battle's own room ("battle-<key>",
+ * joined per battle) also sends `caseBattleWinner` with the site's
+ * `winnerPrize`; its per-seat figure is kept in meta (`siteWinningsUsd`) to
+ * check against, not used, because it is not yet known whether it is gross
+ * or docked for a borrower.
  */
 import type { AdapterContext } from "../../core/adapter.js";
 import { SITE, parse, seen, seenBot, usd } from "./site.js";
-import type { ReBattle, ReBattleFinished, ReBattleRound, ReSeat } from "./types.js";
+import type { ReBattle, ReBattleFinished, ReBattleRound, ReBattleWinner, ReSeat } from "./types.js";
 
 const SEATS: Record<number, { seats: number; teamSize: number; name: string }> = {
   1: { seats: 2, teamSize: 1, name: "1v1" },
@@ -27,13 +34,35 @@ const SEATS: Record<number, { seats: number; teamSize: number; name: string }> =
 };
 
 type Seat = { position: number; id: string; bot: boolean };
-type Live = { createdAt: Date; battle: ReBattle; seats: Seat[]; pot: number; rounds: number; dropCents: number };
+type Live = {
+  createdAt: Date;
+  battle: ReBattle;
+  seats: Seat[];
+  pot: number;
+  rounds: number;
+  dropCents: number;
+  /** `battles:finished`, kept so a late `caseBattleWinner` can re-settle with the site's figures. */
+  finished: ReBattleFinished | null;
+  finishedAt: Date | null;
+  winner: ReBattleWinner | null;
+};
 
 const live = new Map<string, Live>();
 const MAX_AGE_MS = 3 * 60 * 60 * 1000;
+/** How long a finished battle stays around for its winner event. */
+const LINGER_MS = 5 * 60 * 1000;
 
-function sweep(now: Date) {
-  for (const [k, b] of live) if (now.getTime() - b.createdAt.getTime() > MAX_AGE_MS) live.delete(k);
+const room = (key: string) => `battle-${key}`;
+
+function drop(key: string, ctx: AdapterContext) {
+  if (live.delete(key)) ctx.emit("leaveRoom", room(key));
+}
+
+function sweep(now: Date, ctx: AdapterContext) {
+  for (const [k, b] of live) {
+    const age = now.getTime() - (b.finishedAt ?? b.createdAt).getTime();
+    if (age > (b.finishedAt ? LINGER_MS : MAX_AGE_MS)) drop(k, ctx);
+  }
 }
 
 const flag = (v: number | boolean | undefined) => v === true || Number(v) === 1;
@@ -60,12 +89,16 @@ function seats(b: ReBattle, at: Date, ctx: AdapterContext): Seat[] {
 export function handleBattleNew(payload: unknown, receivedAt: Date, ctx: AdapterContext) {
   const b = (payload as { caseBattle?: ReBattle })?.caseBattle;
   if (!b?.url_key) return;
-  sweep(receivedAt);
-  const cur = live.get(b.url_key) ?? { createdAt: b.created_at ? new Date(b.created_at) : receivedAt, battle: b, seats: [], pot: 0, rounds: 0, dropCents: 0 };
+  sweep(receivedAt, ctx);
+  let cur = live.get(b.url_key);
+  if (!cur) {
+    cur = { createdAt: b.created_at ? new Date(b.created_at) : receivedAt, battle: b, seats: [], pot: 0, rounds: 0, dropCents: 0, finished: null, finishedAt: null, winner: null };
+    live.set(b.url_key, cur);
+    ctx.emit("joinRoom", room(b.url_key));
+  }
   cur.battle = b;
   const s = seats(b, receivedAt, ctx);
   if (s.length > cur.seats.length) cur.seats = s;
-  live.set(b.url_key, cur);
 }
 
 export function handleBattleRound(payload: unknown) {
@@ -92,14 +125,38 @@ function winners(b: Live, winner: ReBattleFinished["winner"]): Set<number> {
   return new Set([n]);
 }
 
+/** `caseBattleWinner` from the battle's own room: the site's prize figures. Settles (again) if the battle already finished. */
+export function handleBattleWinner(payload: unknown, receivedAt: Date, ctx: AdapterContext) {
+  const w = payload as ReBattleWinner;
+  const key = w?.battleId ?? w?.gameId ?? w?.url_key;
+  const b = key ? live.get(String(key)) : undefined;
+  if (!b || !w.winnerPrize) return;
+  b.winner = w;
+  if (b.finished) settle(b, b.finished, receivedAt, ctx);
+}
+
 export function handleBattleFinished(payload: unknown, receivedAt: Date, ctx: AdapterContext) {
   const f = payload as ReBattleFinished;
   const b = f?.battleId ? live.get(String(f.battleId)) : undefined;
   if (!b) return;
-  live.delete(String(f.battleId));
+  b.finished = f;
+  b.finishedAt = receivedAt;
+  settle(b, f, receivedAt, ctx);
+}
+
+/** The site's `winnerPrize` read the way its battle page does: `winnings` is one winner's prize, or the whole team's in team mode. */
+function prizeFor(b: Live, position: number, won: Set<number>): number | null {
+  const p = b.winner?.winnerPrize;
+  if (!p || typeof p.winnings !== "number" || !won.has(position)) return null;
+  const layout = SEATS[Number(b.battle.mode)];
+  return p.mode === "team" && layout ? p.winnings / layout.teamSize : p.winnings;
+}
+
+function settle(b: Live, f: ReBattleFinished, receivedAt: Date, ctx: AdapterContext) {
   const cases = Number(b.battle.case_count) || 0;
   if (!b.seats.length || b.rounds < cases) {
     ctx.log.debug({ battleId: f.battleId, rounds: b.rounds, cases, seats: b.seats.length }, "battle finished with rounds or seats missing, skipped");
+    drop(String(f.battleId), ctx);
     return;
   }
   const layout = SEATS[Number(b.battle.mode)];
@@ -111,7 +168,9 @@ export function handleBattleFinished(payload: unknown, receivedAt: Date, ctx: Ad
   for (const s of b.seats) {
     const isWinner = won.has(s.position);
     const stake = s.bot ? price : price * (1 - borrow / 100);
-    const payout = isWinner ? share : 0;
+    // Bots never borrow; a real seat keeps the fraction it paid for.
+    const payout = isWinner ? (s.bot ? share : share * (1 - borrow / 100)) : 0;
+    const site = prizeFor(b, s.position, won);
     ctx.sink.bet({
       site: SITE,
       game: "battles",
@@ -136,6 +195,8 @@ export function handleBattleFinished(payload: unknown, receivedAt: Date, ctx: Ad
         borrowPercent: borrow,
         fundingPercent: flag(b.battle.funding) ? Number(b.battle.percent) || 0 : 0,
         potUsd: usd(b.pot),
+        grossShareUsd: usd(isWinner ? share : 0),
+        siteWinningsUsd: site == null ? null : usd(site),
         cases,
         winner: f.winner ?? null,
         onWinningTeam: isWinner,
@@ -143,4 +204,6 @@ export function handleBattleFinished(payload: unknown, receivedAt: Date, ctx: Ad
       },
     });
   }
+  // Keep the battle until its winner event arrives (or a while passes), so the site's figures can replace the formula.
+  if (b.winner) drop(roundId, ctx);
 }

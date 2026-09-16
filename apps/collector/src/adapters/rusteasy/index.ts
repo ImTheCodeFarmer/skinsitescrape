@@ -10,7 +10,7 @@
  * `live.wins` ticker (wins only), kept raw.
  */
 import type { SiteAdapter } from "../../core/adapter.js";
-import { handleBattleFinished, handleBattleNew, handleBattleRound } from "./battles.js";
+import { handleBattleFinished, handleBattleNew, handleBattleRound, handleBattleWinner } from "./battles.js";
 import { handleChallenger, handleChampionEnd, handleChampionHolder } from "./champion.js";
 import { handleCoinflipNew, handleCoinflipUpdate } from "./coinflip.js";
 import { handleDoubleBet, handleDoubleSpin } from "./double.js";
@@ -23,6 +23,7 @@ export const ROOMS = ["casebattles", "coinflip", "jackpot", "roullete", "champio
 const IGNORE = new Set([
   "online", "singleOnline", "handleRainUpdate", "handleRainStarted", "handleFreeCase", "new_msg", "refreshChat", "games", "exp_update",
   "updateGameAmounts", "gameStatsUpdated", "roulleteTime", "timer", "championTimer", "championQueue", "playAttack", "updateHoldUsers", "updateNotifications",
+  "new_emoji", "new_emoji_guest",
 ]);
 
 export const rusteasy: SiteAdapter = {
@@ -50,6 +51,9 @@ export const rusteasy: SiteAdapter = {
         return handleBattleRound(p);
       case "battles:finished":
         return handleBattleFinished(p, receivedAt, ctx);
+      case "caseBattleWinner":
+        return handleBattleWinner(p, receivedAt, ctx);
+      // battle:starting, battles:drops, battle:tie, battle:expire (battle rooms): raw only.
 
       case "newCoinflipGame":
         return handleCoinflipNew(p, receivedAt, ctx);

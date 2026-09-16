@@ -58,6 +58,23 @@ export type ReBattleRound = { battleId: string; roundNo: number; caseId?: number
 /** `battles:finished`. `winner` is "teamN" in team modes, otherwise the winning seat ("playerN", "N", or "team" of size 1). */
 export type ReBattleFinished = { battleId: string; finalStatus: number; winner?: string | number | null };
 
+/**
+ * `caseBattleWinner`, sent in the battle's own room ("battle-<key>"). The
+ * page derives each seat's prize from `winnerPrize`: `winnings` for the
+ * winning seat, `winnings / teamSize` per seat in team mode, `winnings` for
+ * everyone in shared mode. Field names beyond that are from the client;
+ * the raw row is kept for checking.
+ */
+export type ReBattleWinner = {
+  battleId?: string;
+  gameId?: string;
+  url_key?: string;
+  winnerPrize: { mode: "team" | "shared" | string; winnings: number; winning_team?: string; winner_position?: number | string };
+  positionWinnings?: Record<string, unknown>;
+  jackpot?: boolean;
+  isTieBreaker?: boolean;
+};
+
 // ---------------------------------------------------------------- coinflip
 
 /** `newCoinflipGame`. `side` is "ct" or "t". */
