@@ -1,12 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { Clock, Clover, Coins, Crown, Flame, Gem, Landmark, TrendingDown } from "lucide-react";
+import { Clock, Clover, Coins, Crown, ExternalLink, Flame, Gem, Landmark, TrendingDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { gameLabel } from "@/lib/casinos";
+import { gameLabel, roundUrl } from "@/lib/casinos";
 import { count, dateTime, money } from "@/lib/format";
-import type { Highlight, HighlightPlayer, Highlights } from "@/lib/types";
+import type { CasinoMeta, Highlight, HighlightPlayer, Highlights } from "@/lib/types";
 
 function Face({ p, color }: { p: HighlightPlayer; color: string }) {
   return p.avatar?.startsWith("http") ? (
@@ -20,7 +20,8 @@ function Face({ p, color }: { p: HighlightPlayer; color: string }) {
 
 const badgeLabel = (game: string) => (game === "hourly" ? "Hour" : gameLabel(game));
 
-function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: string; h: Highlight | null; color: string; tone: string }) {
+function Tile({ icon, label, h, color, tone, meta }: { icon: React.ReactNode; label: string; h: Highlight | null; color: string; tone: string; meta: CasinoMeta }) {
+  const href = h ? roundUrl(meta, h.game, h.roundId) : null;
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card/60 p-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -37,7 +38,13 @@ function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: s
             <span className="min-w-0 truncate text-sm" title={h.caption}>{h.caption}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}</Badge>
+            {href ? (
+              <a href={href} target="_blank" rel="noreferrer" title="Open on the site" className="hover:opacity-80">
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}<ExternalLink className="ml-1 size-2.5" /></Badge>
+              </a>
+            ) : (
+              <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}</Badge>
+            )}
             {dateTime(h.at)}
           </div>
         </>
@@ -51,7 +58,7 @@ function Tile({ icon, label, h, color, tone }: { icon: React.ReactNode; label: s
 type TileSpec = { key: keyof Highlights; label: string; icon: React.ReactNode; tone: string; pots?: boolean };
 
 /** `pots` hides the tiles that only make sense with coinflip / jackpot detail (flip, jackpot, bot, streak, long shot). */
-export function HighlightsCard({ data, color, rangeLabel, pots }: { data: Highlights; color: string; rangeLabel: string; pots: boolean }) {
+export function HighlightsCard({ data, color, rangeLabel, pots, meta }: { data: Highlights; color: string; rangeLabel: string; pots: boolean; meta: CasinoMeta }) {
   const all: TileSpec[] = [
     { key: "biggestFlip", label: "Biggest flip", icon: <Coins className="size-3.5" />, tone: "text-amber-400", pots: true },
     { key: "biggestJackpot", label: "Biggest jackpot", icon: <Gem className="size-3.5" />, tone: "text-violet-400", pots: true },
@@ -72,7 +79,7 @@ export function HighlightsCard({ data, color, rangeLabel, pots }: { data: Highli
         </CardDescription>
       </CardHeader>
       <CardContent className={pots ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-4" : "grid gap-3 sm:grid-cols-3"}>
-        {tiles.map((t) => <Tile key={t.key} icon={t.icon} label={t.label} h={data[t.key]} color={color} tone={t.tone} />)}
+        {tiles.map((t) => <Tile key={t.key} icon={t.icon} label={t.label} h={data[t.key]} color={color} tone={t.tone} meta={meta} />)}
       </CardContent>
     </Card>
   );

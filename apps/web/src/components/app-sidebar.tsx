@@ -27,7 +27,7 @@ export function AppSidebar({ sites }: { sites: SiteCard[] }) {
             <span className="text-sm font-bold tracking-tight">H</span>
           </span>
           <div className="leading-tight">
-            <div className="text-sm font-semibold">House Edge</div>
+            <div className="text-sm font-semibold">SkinWagerTracker</div>
             <div className="text-[11px] text-muted-foreground">skin casino tracker</div>
           </div>
         </Link>

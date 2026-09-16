@@ -61,6 +61,8 @@ export type CasinoMeta = {
   untracked?: string;
   /** Site runs pot games (coinflip / jackpot) with their own detail tables, breakdown and records. */
   pots?: boolean;
+  /** Per `bets.game` key, a page for one round with `{id}` in place of the round id. Games without one are not linked. */
+  roundUrls?: Record<string, string>;
 };
 
 export type SiteCard = {

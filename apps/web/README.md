@@ -1,4 +1,4 @@
-# House Edge — skin casino stats
+# SkinWagerTracker — skin casino stats
 
 Dashboard tracking wager, profit, loss, top players and top games for
 Clash.gg, RustClash, Rustyloot, Rustypot, Cases.gg and CSGOGem.

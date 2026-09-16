@@ -13,7 +13,7 @@ const geistSans = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "House Edge — skin casino stats",
+  title: "SkinWagerTracker — skin casino stats",
   description: "Wager, profit, loss, top players and top games across skin casinos.",
 };
 export const dynamic = "force-dynamic";

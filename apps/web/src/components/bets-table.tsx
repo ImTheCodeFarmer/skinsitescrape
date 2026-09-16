@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import { ExternalLink } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { gameLabel } from "@/lib/casinos";
+import { gameLabel, roundUrl } from "@/lib/casinos";
 import { dateTime, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { BetRow } from "@/lib/types";
+import type { BetRow, CasinoMeta } from "@/lib/types";
 
 const MotionRow = motion.create(TableRow);
 const rowAnim = {
@@ -33,7 +34,7 @@ function Who({ name, avatar, color }: { name: string; avatar: string | null; col
 }
 
 /** Settled bets by real players, newest first. Net is the player's side: positive when they came out ahead. */
-export function BetsTable({ bets, color }: { bets: BetRow[]; color: string }) {
+export function BetsTable({ bets, color, meta }: { bets: BetRow[]; color: string; meta: CasinoMeta }) {
   if (!bets.length) return <p className="px-4 py-8 text-center text-sm text-muted-foreground">No bets settled in this range yet.</p>;
   return (
     <Table>
@@ -55,7 +56,13 @@ export function BetsTable({ bets, color }: { bets: BetRow[]; color: string }) {
               <MotionRow key={b.id} layout {...rowAnim}>
                 <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{dateTime(b.settledAt)}</TableCell>
                 <TableCell><Who name={b.player.name} avatar={b.player.avatar} color={color} /></TableCell>
-                <TableCell><Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{gameLabel(b.game)}</Badge></TableCell>
+                <TableCell>
+                  {(() => {
+                    const href = roundUrl(meta, b.game, b.roundId);
+                    const badge = <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{gameLabel(b.game)}{href ? <ExternalLink className="ml-1 size-2.5" /> : null}</Badge>;
+                    return href ? <a href={href} target="_blank" rel="noreferrer" title="Open on the site" className="hover:opacity-80">{badge}</a> : badge;
+                  })()}
+                </TableCell>
                 <TableCell className="text-right font-mono tabular-nums">{money(b.wagered)}</TableCell>
                 <TableCell className="hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell">{money(b.payout)}</TableCell>
                 <TableCell className="text-right">

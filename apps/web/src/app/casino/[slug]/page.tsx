@@ -13,7 +13,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props) {
   const c = getCasinoMeta((await params).slug);
-  return { title: c ? `${c.name} — House Edge` : "Not found" };
+  return { title: c ? `${c.name} — SkinWagerTracker` : "Not found" };
 }
 
 export default async function Page({ params, searchParams }: Props) {

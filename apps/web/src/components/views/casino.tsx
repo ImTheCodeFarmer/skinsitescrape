@@ -137,7 +137,7 @@ export function CasinoView(initial: CasinoData) {
           </Reveal>
           </div>
 
-          {records ? <Reveal><HighlightsCard data={records} color={casino.color} rangeLabel={RANGE_LABEL[range]} pots={hasPots} /></Reveal> : null}
+          {records ? <Reveal><HighlightsCard data={records} color={casino.color} rangeLabel={RANGE_LABEL[range]} pots={hasPots} meta={casino} /></Reveal> : null}
 
           <div className="grid gap-4 lg:grid-cols-5">
             <Reveal className="lg:col-span-3">
@@ -169,7 +169,7 @@ export function CasinoView(initial: CasinoData) {
                 <CardDescription>{hasPots ? "Latest settled games in range, newest first" : "Latest settled bets by players, newest first"}</CardDescription>
               </CardHeader>
               <CardContent className="px-2">
-                {hasPots ? <RoundsTable flips={flips} pots={pots} color={casino.color} /> : <BetsTable bets={bets} color={casino.color} />}
+                {hasPots ? <RoundsTable flips={flips} pots={pots} color={casino.color} /> : <BetsTable bets={bets} color={casino.color} meta={casino} />}
               </CardContent>
             </Card>
           </Reveal>
