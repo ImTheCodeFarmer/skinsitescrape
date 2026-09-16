@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getSession, rangeNeedsSignIn } from "@/lib/auth";
 import { getCasinoMeta } from "@/lib/casinos";
 import { liveCasino, liveOverview } from "@/lib/live";
 import { parseRange, trackedSites } from "@/lib/queries";
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
   const range = parseRange(q.get("range") ?? undefined);
   const sinceRaw = q.get("since");
   const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : new Date().toISOString();
+  if (rangeNeedsSignIn(range) && !(await getSession())) return NextResponse.json({ error: "sign in to view this range" }, { status: 401, headers: NO_STORE });
 
   if (site === "all") return NextResponse.json(await liveOverview(range), { headers: NO_STORE });
   if (!getCasinoMeta(site)) return NextResponse.json({ error: "unknown site" }, { status: 404, headers: NO_STORE });

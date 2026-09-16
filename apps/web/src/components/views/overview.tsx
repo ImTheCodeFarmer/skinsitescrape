@@ -25,6 +25,8 @@ export type OverviewData = {
   players: (PlayerStat & { site: string })[];
   /** When the server produced these props; the live poll starts from here. */
   renderedAt: string;
+  /** Placeholder numbers behind a sign-in overlay: never poll. */
+  locked?: boolean;
 };
 
 const rangeLabel = (r: Range) => (r === 1 ? "last 24 hours" : `last ${r} days`);

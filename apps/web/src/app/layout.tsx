@@ -5,6 +5,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
+import { getSession } from "@/lib/auth";
 import { LiveProvider } from "@/lib/live-client";
 import { siteCards } from "@/lib/queries";
 import "./globals.css";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Sidebar always shows the last 7 days, independent of the page's range.
-  const sites = await siteCards(7);
+  const [sites, session] = await Promise.all([siteCards(7), getSession()]);
   const anyConnected = sites.some((s) => s.status?.connected);
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}>
@@ -33,7 +34,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </Suspense>
             <SidebarInset className="min-w-0">
               <Suspense>
-                <SiteHeader anyConnected={anyConnected} />
+                <SiteHeader anyConnected={anyConnected} session={session ? { steamId: session.steamId, name: session.name, avatar: session.avatar } : null} />
               </Suspense>
               <div className="flex-1 p-4 md:p-6">{children}</div>
             </SidebarInset>

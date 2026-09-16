@@ -37,6 +37,8 @@ export type CasinoData = {
   records: Highlights | null;
   /** When the server produced these props; the live poll starts from here. */
   renderedAt: string;
+  /** Placeholder numbers behind a sign-in overlay: never poll. */
+  locked?: boolean;
 };
 
 const RANGE_LABEL: Record<Range, string> = { 1: "last 24 hours", 7: "last 7 days", 30: "last 30 days", 90: "last 90 days" };

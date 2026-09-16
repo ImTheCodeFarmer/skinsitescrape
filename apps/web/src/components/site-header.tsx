@@ -7,10 +7,11 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { RangeTabs } from "@/components/range-tabs";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { UserMenu, type SessionView } from "@/components/user-menu";
 import { getCasinoMeta } from "@/lib/casinos";
 import { cn } from "@/lib/utils";
 
-export function SiteHeader({ anyConnected }: { anyConnected: boolean }) {
+export function SiteHeader({ anyConnected, session }: { anyConnected: boolean; session: SessionView | null }) {
   const pathname = usePathname();
   const params = useSearchParams();
   const slug = pathname.startsWith("/casino/") ? pathname.split("/")[2] : null;
@@ -40,6 +41,8 @@ export function SiteHeader({ anyConnected }: { anyConnected: boolean }) {
         </span>
         <AutoRefresh />
         <RangeTabs />
+        <Separator orientation="vertical" className="h-5!" />
+        <UserMenu session={session} />
       </div>
     </header>
   );

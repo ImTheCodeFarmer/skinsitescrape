@@ -166,6 +166,23 @@ coinflip, jackpot and champion; battle bots are `bot-<seat>`.
 games; their only public trace is the `live.wins` ticker (wins only), kept
 raw.
 
+## Sign in with Steam
+
+The 24 hour and 7 day views are public and 7 days is the default. The 30
+and 90 day views need a signed-in user: a visitor asking for them gets the
+page rendered from seeded placeholder numbers (`lib/sample.ts`), blurred
+and inert, with a sign-in card on top, and `/api/live` answers 401 for those
+ranges so nothing real leaks through the poll.
+
+Sign-in is Steam OpenID (`lib/auth.ts`): `/api/auth/steam` bounces the
+browser to Steam, `/api/auth/steam/return` verifies the assertion with Steam
+(`check_authentication`), reads the display name and avatar from the public
+XML profile (no API key needed) and sets an HMAC-signed, HttpOnly cookie
+holding the Steam id; `POST /api/auth/logout` clears it. Nothing is stored
+server-side. `SESSION_SECRET` signs the cookie (a key derived from
+`DATABASE_URL` is used when it is unset) and `NEXT_PUBLIC_SITE_URL` fixes
+the return address when the app sits behind a proxy.
+
 ## Live updates
 
 Pages are server-rendered once, then kept current by the client. Each page
@@ -281,6 +298,9 @@ Three services in one project:
    `SITES=rustypot`, `PROXY_URL` (the `low_country-US` pool works with hunting; try
    without a proxy first and keep it only if Railway's own IP is challenged).
    ~256 MB RAM is plenty. Migrations run on boot.
-3. **web** — root directory `apps/web`, Nixpacks default. Env: `DATABASE_URL`.
+3. **web** — root directory `apps/web`, Nixpacks default. Env: `DATABASE_URL`,
+   `SESSION_SECRET` (any long random string; signs the login cookie) and
+   `NEXT_PUBLIC_SITE_URL` (the site's public URL, so Steam sends users back
+   to the right host).
 
 Add a nightly `pg_dump` cron to object storage; the volume is a single node.

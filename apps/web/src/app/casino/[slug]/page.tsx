@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
+import { Locked } from "@/components/locked";
 import { CasinoView } from "@/components/views/casino";
+import { getSession, rangeNeedsSignIn } from "@/lib/auth";
+import { sampleCasino } from "@/lib/sample";
 import { CASINOS, getCasinoMeta } from "@/lib/casinos";
 import { highlights, parseRange, profitBreakdown, recentBets, recentCoinflips, recentJackpots, series, statuses, summary, topGames, topPlayers, trackedSites } from "@/lib/queries";
 
@@ -21,6 +24,13 @@ export default async function Page({ params, searchParams }: Props) {
   const meta = getCasinoMeta(slug);
   if (!meta) notFound();
   const range = parseRange(sp.range);
+  if (rangeNeedsSignIn(range) && !(await getSession())) {
+    return (
+      <Locked range={range}>
+        <CasinoView {...sampleCasino(meta, range)} />
+      </Locked>
+    );
+  }
   const [tracked, st] = await Promise.all([trackedSites(), statuses()]);
   if (!tracked.includes(slug)) {
     return <CasinoView meta={meta} range={range} tracked={false} summary={null} series={[]} players={[]} games={[]} status={null} flips={[]} pots={[]} bets={[]} breakdown={null} records={null} renderedAt={new Date().toISOString()} />;

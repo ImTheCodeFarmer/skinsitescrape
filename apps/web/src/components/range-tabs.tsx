@@ -9,7 +9,7 @@ export function RangeTabs() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const current = OPTIONS.some(([v]) => v === params.get("range")) ? params.get("range")! : "30";
+  const current = OPTIONS.some(([v]) => v === params.get("range")) ? params.get("range")! : "7";
   return (
     <Tabs
       value={current}

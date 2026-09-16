@@ -56,7 +56,7 @@ export function useLiveCasino(initial: CasinoData): CasinoData {
   const key = [LIVE_KEY, "casino", initial.meta.slug, initial.range];
   const q = useQuery<CasinoData>({
     queryKey: key,
-    enabled: initial.tracked && !!initial.summary,
+    enabled: initial.tracked && !!initial.summary && !initial.locked,
     initialData: initial,
     initialDataUpdatedAt: Date.parse(initial.renderedAt),
     staleTime: LIVE_INTERVAL_MS,
@@ -88,6 +88,7 @@ export function useLiveOverview(initial: OverviewData): OverviewData {
   const key = [LIVE_KEY, "overview", initial.range];
   const q = useQuery<OverviewData>({
     queryKey: key,
+    enabled: !initial.locked,
     initialData: initial,
     initialDataUpdatedAt: Date.parse(initial.renderedAt),
     staleTime: LIVE_INTERVAL_MS,

@@ -14,7 +14,7 @@ const rows = async (q: ReturnType<typeof sql>) => (await db().execute(q)) as unk
 
 export function parseRange(v: string | string[] | undefined): Range {
   const r = Number(Array.isArray(v) ? v[0] : v);
-  return r === 1 || r === 7 || r === 30 || r === 90 ? r : 30;
+  return r === 1 || r === 7 || r === 30 || r === 90 ? r : 7;
 }
 
 /** Sites that have a collector row, i.e. real data. */
