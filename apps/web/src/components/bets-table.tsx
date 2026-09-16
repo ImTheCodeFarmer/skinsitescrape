@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { gameLabel, roundUrl } from "@/lib/casinos";
-import { dateTime, money } from "@/lib/format";
+import { dateTime, moneyExact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { BetRow, CasinoMeta } from "@/lib/types";
 
@@ -63,10 +63,10 @@ export function BetsTable({ bets, color, meta }: { bets: BetRow[]; color: string
                     return href ? <a href={href} target="_blank" rel="noreferrer" title="Open on the site" className="hover:opacity-80">{badge}</a> : badge;
                   })()}
                 </TableCell>
-                <TableCell className="text-right font-mono tabular-nums">{money(b.wagered)}</TableCell>
-                <TableCell className="hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell">{money(b.payout)}</TableCell>
+                <TableCell className="text-right font-mono tabular-nums">{moneyExact(b.wagered)}</TableCell>
+                <TableCell className="hidden text-right font-mono tabular-nums text-muted-foreground md:table-cell">{moneyExact(b.payout)}</TableCell>
                 <TableCell className="text-right">
-                  <span className={cn("font-mono tabular-nums", net >= 0 ? "text-emerald-400" : "text-rose-400")}>{net >= 0 ? "+" : "−"}{money(Math.abs(net))}</span>
+                  <span className={cn("font-mono tabular-nums", net >= 0 ? "text-emerald-400" : "text-rose-400")}>{net >= 0 ? "+" : "−"}{moneyExact(Math.abs(net))}</span>
                 </TableCell>
               </MotionRow>
             );

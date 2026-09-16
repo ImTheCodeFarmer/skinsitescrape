@@ -16,6 +16,10 @@ const numCompact = new Intl.NumberFormat("en-US", {
 });
 
 export const money = (n: number) => usd.format(n);
+const usdCents = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const usdMils = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 3, maximumFractionDigits: 3 });
+/** Per-bet amounts: cents, and a third decimal when the amount is under a cent (a 1-cent coin bet is $0.006). */
+export const moneyExact = (n: number) => (n !== 0 && Math.abs(n) < 0.01 ? usdMils.format(n) : usdCents.format(n));
 export const moneyShort = (n: number) => usdCompact.format(n);
 export const count = (n: number) => num.format(n);
 export const countShort = (n: number) => numCompact.format(n);
