@@ -23,11 +23,17 @@ export interface SiteAdapter {
     /**
      * Wire protocol. "socketio" (default) appends the Engine.IO path and
      * query and frames events as "42[...]". "raw" connects to `url` verbatim
-     * and frames as JSON arrays `[id, event, data]` (csgogem). Only the wstap
-     * transport speaks "raw".
+     * and frames as JSON arrays `[id, event, data]` (csgogem). "pair" also
+     * connects verbatim and frames as `[event, data]` with no request ids
+     * (cases.gg). Only the wstap transport speaks "raw" and "pair".
      */
-    protocol?: "socketio" | "raw";
+    protocol?: "socketio" | "raw" | "pair";
   };
+  /**
+   * Name of this connection when a site runs more than one (cases.gg has a
+   * separate crash socket). Shows up in logs; the site's status row is shared.
+   */
+  feed?: string;
   /** Called once per (re)connect. Subscribe to feeds here. */
   onConnect?(ctx: AdapterContext): void;
   /** Called for every server event. Must not throw; parse errors are logged and the raw event kept. */

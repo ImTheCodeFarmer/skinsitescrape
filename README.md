@@ -83,7 +83,12 @@ within minutes, so it is not worth the browser it takes to mint.
 
 `TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
 `TRANSPORT=socketio` (plain client) remain as fallbacks for Socket.IO sites;
-only `wstap` speaks the raw protocol CSGOGem uses.
+only `wstap` speaks the raw protocols CSGOGem and Cases.gg use.
+
+The checked-in `apps/collector/wstap/wstap` is whatever machine last ran
+`build:wstap` (a macOS arm64 build at the time of writing); the Docker image
+builds its own. Without Go installed, build one for this machine with
+`docker run --rm -v "$PWD/apps/collector/wstap":/src -w /src -e CGO_ENABLED=0 golang:1.24 go build -o wstap .`
 
 ## CSGOGem
 
@@ -112,6 +117,32 @@ public socket (`upgrade.onWin`, `mines.onLiveGame`, `keno.onLiveGame`), so
 neither volume nor house net can be measured, and case openings are not on
 the socket at all (`case` is rejected). The dashboard says so on the
 CSGOGem page.
+
+## Cases.gg
+
+Two plain websockets, both `[event, data]` frames (`protocol: "pair"`), both
+behind Cloudflare and both fine through `wstap` without a proxy as of
+2026-09-16. The collector runs them as two connections of the one site
+(`ADAPTERS.cases` is a list); the status row counts the site as connected
+only while both are up, and `reparse` replays raw rows through both.
+
+- `wss://ws.cases.gg/`: send `["subscribe", "battles"]` and
+  `["subscribe", "item-coinflip"]` (at most ten channels; `chat`, `rain`,
+  `raffles` and `battle-<id>` also exist). `online` ticks every few seconds.
+- `wss://cgs.cases.gg/`: crash, streamed to everyone. Raw rows from it are
+  stored as `crash:<event>`; `tick` is kept only when it carries a cashout.
+
+Money is cents of USD on both. Bots have a per-game `botId` and become the
+shared house players `bot-1`, `bot-2`, …
+
+| Mode | Feed | Settlement | `game` |
+|---|---|---|---|
+| Case battles | `battles:new/join/join-bots/round/finished` | Every seat pays `joinPrice`; each winner gets floor(total drop value / teamSize), the site's own formula. Group mode is that with one team. A seat on a loan (`borrowMultiplier` t > 1) paid `joinPrice / t` and keeps `(1/t)(1 − 0.01(t − 1))` of its winnings; the row stores the player's figures, the seat's gross in meta. Battles already running at connect are never settled (no lobby list on the socket). | `battles` |
+| Item coinflip | `item-coinflip:new/update` | Each player's stake is their items' listed value; the winner is assumed to take everything (`meta.payoutAssumed`), as no game ran during discovery and the history endpoint was empty. | `coinflip` |
+| Crash | `status`, `bet`, `tick`, `historyEntry` | Settled on the `ended` status, which lists every bet: cashouts pay the tick's `winnings`, the rest lose. | `crash` |
+
+**Not tracked:** mystery box openings and the upgrader have no public feed
+(HTTP only). `battles:double-down` and `battles:awaiting-eos` are raw only.
 
 ## Live updates
 

@@ -9,7 +9,7 @@ export const CASINOS: CasinoMeta[] = [
   { slug: "clash", name: "Clash.gg", url: "https://clash.gg", logo: "/logos/clash.png", color: color("clash"), tagline: "Case battles, upgrader, plinko", founded: 2022, currency: "USD" },
   { slug: "rustclash", name: "RustClash", url: "https://rustclash.com", logo: "/logos/rustclash.png", color: color("rustclash"), tagline: "Rust skins, battles, roulette", founded: 2022, currency: "USD" },
   { slug: "rustyloot", name: "Rustyloot", url: "https://rustyloot.gg", logo: "/logos/rustyloot.png", color: color("rustyloot"), tagline: "Roulette, crash and jackpot", founded: 2021, currency: "Coins" },
-  { slug: "cases", name: "Cases.gg", url: "https://cases.gg", logo: "/logos/cases.png", color: color("cases"), tagline: "Case opening and battles", founded: 2023, currency: "USD" },
+  { slug: "cases", name: "Cases.gg", url: "https://cases.gg", logo: "/logos/cases.png", color: color("cases"), tagline: "Case battles, coinflip and crash", founded: 2023, currency: "USD", untracked: "Mystery box openings and the upgrader are not tracked: they have no public feed.", roundUrls: { battles: "https://cases.gg/case-battles/{id}" } },
   { slug: "csgogem", name: "CSGOGem", url: "https://csgogem.com", logo: "/logos/csgogem.png", color: color("csgogem"), tagline: "Case battles, slide and double", founded: 2019, currency: "Coins", untracked: "Upgrader, mines, tiles and cases are not tracked: the public feed only shows wins, or nothing at all.", roundUrls: { battles: "https://csgogem.com/games/battles/{id}" } },
 ];
 

@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { Logger } from "pino";
 import type { SiteAdapter } from "./adapter.js";
-import { parseRawFrame, parseSocketIoFrame } from "./frames.js";
+import { parsePairFrame, parseRawFrame, parseSocketIoFrame } from "./frames.js";
 import type { TransportHooks, Transport } from "./transport.js";
 
 function findBinary(): string {
@@ -48,7 +48,8 @@ const HUNT_MAX = Number(process.env.PROXY_HUNT_MAX ?? 40); // refusals in a row 
 export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: Logger, proxyUrl?: string): Transport {
   const bin = findBinary();
   const { url, path = "/socket.io/", protocol = "socketio" } = adapter.connection;
-  const raw = protocol === "raw";
+  /** Anything but Socket.IO: the upgrade itself is the connect, no Engine.IO handshake. */
+  const raw = protocol !== "socketio";
   const wsUrl = new URL(url);
   if (!raw) {
     wsUrl.pathname = path;
@@ -102,7 +103,7 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
         delay = 2_000;
         return;
       }
-      const parsed = raw ? parseRawFrame(d) : parseSocketIoFrame(d);
+      const parsed = protocol === "pair" ? parsePairFrame(d) : raw ? parseRawFrame(d) : parseSocketIoFrame(d);
       if (parsed) hooks.onEvent({ event: parsed.event, args: parsed.args, receivedAt: new Date() });
     });
     createInterface({ input: child.stderr! }).on("line", (line) => {
@@ -160,7 +161,11 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
   return {
     emit: (event, ...args) => {
       if (!child?.stdin?.writable) return;
-      child.stdin.write((raw ? JSON.stringify([++seq, event, args[0]]) : "42" + JSON.stringify([event, ...args])) + "\n");
+      const frame =
+        protocol === "pair" ? JSON.stringify([event, args.length ? args[0] : null])
+        : raw ? JSON.stringify([++seq, event, args[0]])
+        : "42" + JSON.stringify([event, ...args]);
+      child.stdin.write(frame + "\n");
     },
     close: async () => {
       closed = true;

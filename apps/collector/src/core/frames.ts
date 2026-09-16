@@ -31,3 +31,18 @@ export function parseRawFrame(s: string): { event: string; args: unknown[] } | n
     return null;
   }
 }
+
+/**
+ * Parse a `[event, data]` frame (cases.gg). Both sockets there send exactly
+ * two elements: the event name and one payload, with no request ids or acks.
+ */
+export function parsePairFrame(s: string): { event: string; args: unknown[] } | null {
+  if (!s.startsWith("[")) return null;
+  try {
+    const arr = JSON.parse(s);
+    if (!Array.isArray(arr) || typeof arr[0] !== "string") return null;
+    return { event: arr[0], args: arr.length > 1 ? [arr[1]] : [] };
+  } catch {
+    return null;
+  }
+}
