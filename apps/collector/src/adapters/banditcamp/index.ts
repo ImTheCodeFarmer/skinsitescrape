@@ -3,7 +3,8 @@
  * are `{"a":[event, ...args], "i":id}` and replies `{"i":id, "d":data}`
  * (protocol "envelope"). Behind Cloudflare; wstap connects without a proxy
  * as of 2026-09-17. Rooms are joined with `subscribe <room>`; the wins
- * ticker (`games.feed.new`) needs no room. Amounts are scrap in hundredths.
+ * ticker (`games.feed.new`) needs no room. Amounts are scrap in hundredths,
+ * converted at the site's own USD rate (site.ts).
  *
  * Tracked: Crate Battles, Crate Royale, Wheel of Fortune, Spinner Battles
  * and Crate Unboxing (see cases.ts for why the ticker is enough there).
@@ -17,7 +18,7 @@ import type { SiteAdapter } from "../../core/adapter.js";
 import { handleBattleActive, handleBattleExpired, handleBattleFinished, handleBattleJoined, handleBattleNew } from "./battles.js";
 import { handleCaseList, handleFeedItem, requestPrices } from "./cases.js";
 import { handleRoyaleActive, handleRoyaleEntry, handleRoyaleNew, handleRoyaleRoll, handleRoyaleStats } from "./royale.js";
-import { ORIGIN, SITE } from "./site.js";
+import { ORIGIN, SITE, setScrapRate } from "./site.js";
 import { handleSpinActive, handleSpinExpired, handleSpinJoined, handleSpinNew, handleSpinRoll, setSpinnerRake } from "./spinners.js";
 import { handleWheelBet, handleWheelDelete, handleWheelRoll, handleWheelRound } from "./wheel.js";
 
@@ -60,6 +61,7 @@ export const banditcamp: SiteAdapter = {
       return;
     }
     if (event === "app.conga") {
+      setScrapRate((p as { withdrawals?: { crypto?: { scrapRateUsd?: number } } })?.withdrawals?.crypto?.scrapRateUsd);
       setSpinnerRake((p as { games?: { spinners?: { rake?: number } } })?.games?.spinners?.rake);
       return;
     }

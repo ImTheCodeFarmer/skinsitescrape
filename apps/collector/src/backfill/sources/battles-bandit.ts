@@ -111,5 +111,5 @@ function make(cfg: Cfg): Source {
   }
 }
 
-export const banditBattles = make({ name: "banditcamp-battles", site: "banditcamp", prefix: "bandit", note: "site not on the dashboard; unit scale assumed (cents)" });
+export const banditBattles = make({ name: "banditcamp-battles", site: "banditcamp", prefix: "bandit", note: "hundredths of scrap at the site's $0.65 rate" });
 export const rustmagicBattles = make({ name: "rustmagic-battles", site: "rustmagic", prefix: "rustmagic", note: "site not on the dashboard; total_earned/total_paid units do not reconcile with price, so amounts are unverified; winner unknown when several real players" });

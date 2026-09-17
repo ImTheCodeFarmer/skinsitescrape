@@ -4,8 +4,20 @@ export const SITE = "banditcamp";
 export const ORIGIN = "https://bandit.camp";
 
 export const round4 = (n: number) => Math.round(n * 10000) / 10000;
-/** Amounts are scrap in hundredths: 100 = 1.00 scrap = $1 (the same scale the legacy backfill uses). */
-export const usd = (v: number | string | null | undefined) => round4((Number(v) || 0) / 100);
+/**
+ * Amounts are scrap in hundredths (100 = 1.00 scrap). Scrap is priced at the
+ * site's own USD rate, `withdrawals.crypto.scrapRateUsd` in `app.conga`:
+ * $0.65 on 2026-09-17, which is what a scrap cashes out for. Buying is a
+ * little dearer ($1 buys 1.40 scrap with the standing deposit bonus, about
+ * $0.71 each). The rate is refreshed from `app.conga` on every connect; a
+ * reparse uses the default, since that blob is not stored.
+ */
+export const SCRAP_USD = 0.65;
+let scrapUsd = SCRAP_USD;
+export const setScrapRate = (v: unknown) => {
+  if (typeof v === "number" && v > 0 && v <= 10) scrapUsd = v;
+};
+export const usd = (v: number | string | null | undefined) => round4(((Number(v) || 0) / 100) * scrapUsd);
 
 /** The site's own bots ("bandits") sit in battles, royale and spinners as "banditcamp-<n|colour>". */
 export const isBot = (id: string, flag?: boolean) => flag === true || id.startsWith("banditcamp-");

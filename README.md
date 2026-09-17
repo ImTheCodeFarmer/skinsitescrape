@@ -196,7 +196,9 @@ objects, `{"a":[event, ...args], "i":id}`, answered by `{"i":id, "d":data}`
 or `{"i":id, "e":{message}}` (`protocol: "envelope"`; replies reach the
 adapter as `ack` / `nack`). Behind Cloudflare, fine through `wstap` without a
 proxy as of 2026-09-17. Rooms are joined with `subscribe <room>`. Amounts are
-scrap in hundredths (100 = $1, the scale the legacy backfill uses). The
+scrap in hundredths, converted at the site's own rate from `app.conga`
+(`withdrawals.crypto.scrapRateUsd`, $0.65 per scrap on 2026-09-17; the
+legacy backfill uses the same figure). The
 site's bots are `banditcamp-<n|colour>` and are stored as house players.
 
 | Mode | Room / events | Settlement | `game` |

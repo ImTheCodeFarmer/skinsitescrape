@@ -9,8 +9,11 @@
  *   rustypot          USD already
  *   csgogem           cents of coins, 1 coin = $0.60 (the site's own USD fx
  *                     rate on its socket, app.onFxRateUpdate, 2026-09-15)
+ *   banditcamp        hundredths of scrap, 1 scrap = $0.65 (the site's own
+ *                     rate on its socket, app.conga
+ *                     withdrawals.crypto.scrapRateUsd, 2026-09-17)
  * Assumed (no legacy conversion existed, prices look like cents):
- *   rustyloot, banditcamp, rustmagic  cents, 1 coin = $1
+ *   rustyloot, rustmagic  cents, 1 coin = $1
  */
 const DEFAULT_USD_PER_UNIT: Record<string, number> = {
   rustypot: 1,
@@ -19,7 +22,7 @@ const DEFAULT_USD_PER_UNIT: Record<string, number> = {
   cases: 1 / 100,
   csgogem: 0.6 / 100,
   rustyloot: 1 / 100,
-  banditcamp: 1 / 100,
+  banditcamp: 0.65 / 100,
   rustmagic: 1 / 100,
 };
 
