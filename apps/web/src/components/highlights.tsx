@@ -75,7 +75,7 @@ export function HighlightsCard({ data, color, rangeLabel, pots, meta }: { data: 
       <CardHeader>
         <CardTitle>Records</CardTitle>
         <CardDescription>
-          Biggest moments in the {rangeLabel}. {pots ? "Amounts are what the winner received." : "Player win is what they received; site win is the biggest stake a player lost."}
+          Biggest moments in the {rangeLabel}. {pots ? "Amounts are the full pot, before the site's tax." : "Player win is what they received; site win is the biggest stake a player lost."}
         </CardDescription>
       </CardHeader>
       <CardContent className={pots ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-4" : "grid gap-3 sm:grid-cols-3"}>

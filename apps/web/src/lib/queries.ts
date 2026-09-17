@@ -350,7 +350,6 @@ async function profitBreakdownQuery(site: string, range: Range): Promise<ProfitB
 
 const who = (name: unknown, id: unknown, avatar: unknown, house: unknown) => ({ name: str(name) ?? String(id ?? "?"), avatar: str(avatar), house: Boolean(house) });
 const moneyForCaption = (v: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
-const round2 = (v: number) => Math.round(v * 100) / 100;
 const staked = (v: unknown) => ` · staked ${moneyForCaption(n(v))}`;
 const chance = (v: unknown) => (v == null ? "" : ` at ${n(v).toFixed(n(v) < 10 ? 1 : 0)}% chance`);
 const DAY_MS = 86_400_000;
@@ -501,10 +500,21 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
 
   const biggestFlip = flip ? flipHighlight(flip, n(flip.pot_usd)) : null;
 
-  // Gross figures: what the winner received, with the stake in the caption.
+  // Records are pre-tax. A bet's payout is stored net of the site's cut, so a pot game win reads the round's pot instead.
+  const winGame = playerWin ? String(playerWin.game) : "";
+  const [winRound] =
+    playerWin && hasPots(site) && playerWin.round_id != null && (winGame === "coinflip" || winGame === "jackpot")
+      ? await rows(
+          winGame === "coinflip"
+            ? sql`SELECT pot_usd FROM coinflips WHERE site = ${site} AND external_id = ${String(playerWin.round_id)}`
+            : sql`SELECT pot_usd FROM jackpots WHERE site = ${site} AND external_id = ${String(playerWin.round_id)}`,
+        )
+      : [];
+
+  // Gross figures: the pre-tax win, with the stake in the caption.
   const biggestPlayerWin: Highlight | null = playerWin
     ? {
-        amount: n(playerWin.payout_usd),
+        amount: winRound?.pot_usd != null ? n(winRound.pot_usd) : n(playerWin.payout_usd),
         at: iso(playerWin.settled_at ?? playerWin.placed_at),
         game: String(playerWin.game),
         roundId: str(playerWin.round_id) ?? "",
@@ -558,7 +568,7 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
       }
     : null;
   const biggestBotLoss: Highlight | null = botLoss
-    ? flipHighlight(botLoss, round2(n(botLoss.pot_usd) - n(botLoss.tax_usd)), staked(botLoss.creator_house ? botLoss.creator_total : botLoss.opponent_total).replace("staked", "bot staked"))
+    ? flipHighlight(botLoss, n(botLoss.pot_usd), staked(botLoss.creator_house ? botLoss.creator_total : botLoss.opponent_total).replace("staked", "bot staked"))
     : null;
   const peakHour: Highlight | null = peak
     ? { amount: n(peak.wagered), at: iso(peak.bucket), game: "hourly", roundId: "", caption: `${new Intl.NumberFormat("en-US").format(n(peak.bets))} bets in the hour from ${new Date(peak.bucket as string).toLocaleTimeString("en-US", { hour: "numeric", hour12: true, timeZone: "UTC" })} UTC`, players: [] }
