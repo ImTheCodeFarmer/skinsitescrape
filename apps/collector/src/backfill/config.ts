@@ -12,8 +12,10 @@
  *   banditcamp        hundredths of scrap, 1 scrap = $0.65 (the site's own
  *                     rate on its socket, app.conga
  *                     withdrawals.crypto.scrapRateUsd, 2026-09-17)
+ *   rustmagic         hundredths of a coin, 1 coin = $0.66 (the site's FAQ,
+ *                     2026-09-17)
  * Assumed (no legacy conversion existed, prices look like cents):
- *   rustyloot, rustmagic  cents, 1 coin = $1
+ *   rustyloot  cents, 1 coin = $1
  */
 const DEFAULT_USD_PER_UNIT: Record<string, number> = {
   rustypot: 1,
@@ -23,7 +25,7 @@ const DEFAULT_USD_PER_UNIT: Record<string, number> = {
   csgogem: 0.6 / 100,
   rustyloot: 1 / 100,
   banditcamp: 0.65 / 100,
-  rustmagic: 1 / 100,
+  rustmagic: 0.66 / 100,
 };
 
 export function usdPerUnit(site: string): number {

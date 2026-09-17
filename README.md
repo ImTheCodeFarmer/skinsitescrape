@@ -1,7 +1,8 @@
 # casino-stats
 
 Dashboard plus collector for skin-casino activity (Clash.gg, RustClash,
-Rustyloot, Rustypot, Cases.gg, Clash.gg, CSGOGem, RustEasy, Bandit.camp). pnpm monorepo.
+Rustyloot, Rustypot, Cases.gg, Clash.gg, CSGOGem, RustEasy, Bandit.camp,
+RustMagic). pnpm monorepo.
 
 ```
 apps/web         Next.js + shadcn dashboard (currently on sample data)
@@ -212,6 +213,38 @@ site's bots are `banditcamp-<n|colour>` and are stored as house players.
 **Not tracked:** Minefield Madness, Scrap Upgrader and Beancan Blast (`dice`
 on the wire) are private request/reply games; the wins ticker never shows a
 loss for them, so it is kept raw only.
+
+## RustMagic
+
+Socket.IO at `wss://api.rustmagic.com/socket.io/` with empty `token` and
+`totp` on the query for a guest. Behind Cloudflare, fine through `wstap`
+without a proxy as of 2026-09-17. Amounts are hundredths of a coin and a coin
+is $0.66 (the site's FAQ). Players are the site's numeric user ids; the feed
+carries no Steam ids.
+
+The whole site comes from one room. `betting:join` turns on
+`betting:live-bets`, the site's live bet table: one settled bet per message
+with its type, player, stake and payout, losses included. Bet ids are a
+single sequence across all games, which makes coverage measurable: over seven
+minutes, 249 of the 255 ids issued after joining arrived, the rest plausibly
+still unsettled (battles report up to two minutes after they are placed).
+`date` is the time the bet was placed.
+
+| Bet type | `game` |
+|---|---|
+| `BATTLE` (real players only; `battle.id` is the round) | `battles` |
+| `UPGRADE` | `upgrader` |
+| `MINES` | `mines` |
+| `KENO` | `keno` |
+| `FLIPPER` | `flipper` |
+| `ROULETTE` (Magic Wheel) | `roulette` |
+| `UNBOXING` (case opening) | `cases` |
+| anything with a `slotsGameCode` (third-party slots, about three bets in four) | `slots`, title and code in `meta` |
+| `COINFLIP`, `CRASH` (in the client's enum, not on the site today) | `coinflip`, `crash` |
+
+Only `allBets` is stored raw; the message's other lists repeat it. The
+`game_battles` and `game_roulette` rooms have round detail but nothing the
+stats need, so they are not joined.
 
 ## Sign in with Steam
 
