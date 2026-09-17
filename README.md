@@ -246,6 +246,28 @@ Only `allBets` is stored raw; the message's other lists repeat it. The
 `game_battles` and `game_roulette` rooms have round detail but nothing the
 stats need, so they are not joined.
 
+## Rustyloot
+
+Socket.IO at `wss://api.rustyloot.gg/socket.io/` with `language=en` on the
+query. Behind Cloudflare, fine through `wstap` without a proxy as of
+2026-09-17. Rooms are joined with `<game>:connect {}`. Amounts are
+thousandths of a coin and the site sells 1.55 coins to the dollar (its
+deposit forms), so a coin counts as $1 / 1.55. House bots carry no id and
+are stored as `bot-<game>-<seat>`.
+
+| Mode | Source | Settlement | `game` |
+|---|---|---|---|
+| Case battles | room `battles`: `battles:new`, `battles:newPlayer`, `battles:results` | Winning seats, bots included, split `totalValue`. **Borrow:** a seat with `borrowPercent` b stakes floor(price × (1 − b/100)) and keeps floor(share × (1 − b/100)); the floor is taken in floating point, as the site does, and every battle in a ten minute capture matched the site's own ticker row to the coin (an 80% borrower of a 43,140 seat paid 8,627 and received 6,840 of a 34,202.5 share). `fundPercent` is applied as a discount to joiners and a cost to the creator, by assumption: it was 0 throughout. Battles running at connect are skipped. | `battles` |
+| Wheel | room `wheel`: `wheel:updateState` (the ended state carries every bet) | gray 2x, blue 3x, purple 6x, green 12x, yellow 22x, times `zapMultiplier` when the winning tile was zapped (the client's rules). | `wheel` |
+| PVP Mines | room `pvpmines`: `pvpmines:update` | Every seat stakes `value`; the winner receives `winner.value` (10% rake). | `pvpmines` |
+| Coinflip | room `coinflip`: `coinflip:update` | Item flip, roughly hourly. Winner is credited `total`; the site's cut is not on the feed (`meta.taxUnknown`). | `coinflip` |
+
+**Not tracked:** Plinko, Upgrader, Mines and Cases are private games. Their
+only public trace is `betting:live-bets`, the site's live bet table, which
+does show losses but carries no bet or user ids and is dripped at one row a
+second, so its completeness under load is unknown. By decision on 2026-09-17
+it is not collected, not even raw.
+
 ## Sign in with Steam
 
 The 24 hour and 7 day views are public and 7 days is the default. The 30

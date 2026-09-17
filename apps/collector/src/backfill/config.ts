@@ -14,8 +14,10 @@
  *                     withdrawals.crypto.scrapRateUsd, 2026-09-17)
  *   rustmagic         hundredths of a coin, 1 coin = $0.66 (the site's FAQ,
  *                     2026-09-17)
- * Assumed (no legacy conversion existed, prices look like cents):
- *   rustyloot  cents, 1 coin = $1
+ *   rustyloot         1.55 coins to the dollar (the site's deposit forms,
+ *                     2026-09-17). The legacy rows look like cents of a
+ *                     coin, which is an assumption: the live feed is in
+ *                     thousandths.
  */
 const DEFAULT_USD_PER_UNIT: Record<string, number> = {
   rustypot: 1,
@@ -23,7 +25,7 @@ const DEFAULT_USD_PER_UNIT: Record<string, number> = {
   rustclash: 0.6 / 100,
   cases: 1 / 100,
   csgogem: 0.6 / 100,
-  rustyloot: 1 / 100,
+  rustyloot: 1 / 1.55 / 100,
   banditcamp: 0.65 / 100,
   rustmagic: 0.66 / 100,
 };
