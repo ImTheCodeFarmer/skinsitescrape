@@ -3,7 +3,7 @@ import { sql } from "@casino/db";
 import { db } from "./db";
 import { CASINOS, gameLabel, getCasinoMeta } from "./casinos";
 import { memo, ttlFor } from "./memo";
-import type { BetRow, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteCard, SiteStatus, Summary } from "./types";
+import type { BetRow, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary } from "./types";
 
 /** Whether a site has coinflip / jackpot detail (rounds tables, breakdown, pot records). */
 const hasPots = (site: string) => Boolean(getCasinoMeta(site)?.pots);
@@ -21,6 +21,22 @@ export function parseRange(v: string | string[] | undefined): Range {
 export async function trackedSites(): Promise<string[]> {
   const r = await rows(sql`SELECT DISTINCT site FROM bets_daily UNION SELECT site FROM collector_status`);
   return r.map((x) => String(x.site));
+}
+
+/** Admin site info: every game each site has bets for, with its volume and first and last day, from the daily rollup. */
+export async function siteGames(): Promise<Record<string, SiteGameInfo[]>> {
+  const r = await rows(sql`SELECT site, game, sum(bets) bets, min(bucket) first_day, max(bucket) last_day FROM bets_daily GROUP BY site, game ORDER BY site, bets DESC`);
+  const out: Record<string, SiteGameInfo[]> = {};
+  for (const x of r) {
+    (out[String(x.site)] ??= []).push({
+      game: String(x.game),
+      label: gameLabel(String(x.game)),
+      bets: n(x.bets),
+      firstDay: new Date(x.first_day as string).toISOString(),
+      lastDay: new Date(x.last_day as string).toISOString(),
+    });
+  }
+  return out;
 }
 
 export async function statuses(): Promise<Record<string, SiteStatus>> {

@@ -40,12 +40,30 @@ export type PlayerStat = {
   activeDays: number;
 };
 
+/** One tracked game of a site, from the daily rollup. */
+export type SiteGameInfo = { game: string; label: string; bets: number; firstDay: string; lastDay: string };
+
 export type SiteStatus = {
   site: string;
   connected: boolean;
   lastEventAt: string | null;
   lastConnectAt: string | null;
   reconnects: number;
+};
+
+export type Conversion = {
+  /** What the site calls its balance: "USD", "gem", "coin", "scrap". */
+  unit: string;
+  /** USD value of one unit. */
+  usdPerUnit: number;
+  /** How amounts arrive on the feed, e.g. "cents of a gem". */
+  wire: string;
+  /** Where the rate comes from. */
+  source: string;
+  /** The collector re-reads the rate from the site's feed; `usdPerUnit` is then the fallback. */
+  live?: boolean;
+  /** No published rate was found; the figure is a guess. */
+  assumed?: boolean;
 };
 
 export type CasinoMeta = {
@@ -57,6 +75,8 @@ export type CasinoMeta = {
   tagline: string;
   founded: number;
   currency: "USD" | "Coins";
+  /** How the site's amounts become the USD figures stored in `bets`. Shown on the admin site info tab only. */
+  conversion: Conversion;
   /** Short note on modes the site offers but the collector cannot see. */
   untracked?: string;
   /** Site runs pot games (coinflip / jackpot) with their own detail tables, breakdown and records. */
