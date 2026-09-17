@@ -1,7 +1,7 @@
 # casino-stats
 
 Dashboard plus collector for skin-casino activity (Clash.gg, RustClash,
-Rustyloot, Rustypot, Cases.gg, Clash.gg, CSGOGem, RustEasy). pnpm monorepo.
+Rustyloot, Rustypot, Cases.gg, Clash.gg, CSGOGem, RustEasy, Bandit.camp). pnpm monorepo.
 
 ```
 apps/web         Next.js + shadcn dashboard (currently on sample data)
@@ -83,7 +83,7 @@ within minutes, so it is not worth the browser it takes to mint.
 
 `TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
 `TRANSPORT=socketio` (plain client) remain as fallbacks for Socket.IO sites;
-only `wstap` speaks the raw protocols CSGOGem and Cases.gg use.
+only `wstap` speaks the raw protocols CSGOGem, Cases.gg and Bandit.camp use.
 
 The checked-in `apps/collector/wstap/wstap` is whatever machine last ran
 `build:wstap` (a macOS arm64 build at the time of writing); the Docker image
@@ -188,6 +188,28 @@ coinflip, jackpot and champion; battle bots are `bot-<seat>`.
 **Not tracked:** cases, upgrader, mines and bust (blackjack) are private HTTP
 games; their only public trace is the `live.wins` ticker (wins only), kept
 raw.
+
+## Bandit.camp
+
+`wss://api.bandit.camp/` is a plain websocket, not Socket.IO: frames are
+objects, `{"a":[event, ...args], "i":id}`, answered by `{"i":id, "d":data}`
+or `{"i":id, "e":{message}}` (`protocol: "envelope"`; replies reach the
+adapter as `ack` / `nack`). Behind Cloudflare, fine through `wstap` without a
+proxy as of 2026-09-17. Rooms are joined with `subscribe <room>`. Amounts are
+scrap in hundredths (100 = $1, the scale the legacy backfill uses). The
+site's bots are `banditcamp-<n|colour>` and are stored as house players.
+
+| Mode | Room / events | Settlement | `game` |
+|---|---|---|---|
+| Crate Battles | `caseBattles`: `active` (snapshot), `new`, `playerJoined`, `finished` (`winningTeams`, `totalWon`), `expired`. `rollRound` (one per case) is never stored. | Every seat on a winning team, bots included, takes an equal share of `totalWon`; that covers jackpot mode and group unboxes. A seat costs `price`; with `funding` joiners pay price − ceil(price × funding%) and the creator's stake carries the rest for every other seat (that this includes bot-filled seats is an assumption). | `battles` |
+| Crate Royale | `caseJackpot`: `active`, `new`, `newEntry` (the crates an entry opened and what they unboxed), `roll` (`winningEntryId`, `bonus`) | An entry stakes its crates' prices; the winning entry takes everything unboxed plus the bonus (verified against `recentWin.totalWon`). No rake: the edge is in the crates. Rounds already populated at connect are skipped. | `royale` |
+| Wheel of Fortune | `wheel`: `round`, `newBet` (a player's whole bet sheet), `deleteBet`, `roll` (segment index) | Segments `[20,1,3,1,5,1,3,1,10,1,3,5,1,5,1,3,1,10,1,3,1,5,1,3,1]`; a chip on field N pays N to 1. | `wheel` |
+| Spinner Battles | `spinners`: `active`, `new`, `joined`, `roll` (`data.winner`), `expired` | Winner takes the pot less the rake from `app.conga` (5%). Games that only show in the wins ticker (presumably private) are not tracked. | `spinners` |
+| Crate Unboxing | no room: the wins ticker `games.feed.new`, which for crates carries every opening, losses included | Stake is the crate's price from `game.cases.list` (refreshed hourly) times the items opened. The ticker runs about 40 minutes behind and has no timestamp, so openings are dated when received (`meta.feedDelayed`). Openings with a `jackpotId` belong to a Crate Royale entry and are skipped. | `cases` |
+
+**Not tracked:** Minefield Madness, Scrap Upgrader and Beancan Blast (`dice`
+on the wire) are private request/reply games; the wins ticker never shows a
+loss for them, so it is kept raw only.
 
 ## Sign in with Steam
 

@@ -1,4 +1,5 @@
 import type { SiteAdapter } from "../core/adapter.js";
+import { banditcamp } from "./banditcamp/index.js";
 import { cases, casesCrash } from "./cases/index.js";
 import { clash, clashCrash } from "./clash/index.js";
 import { csgogem } from "./csgogem/index.js";
@@ -6,7 +7,7 @@ import { rusteasy } from "./rusteasy/index.js";
 import { rustypot } from "./rustypot/index.js";
 
 /** A site is one adapter, or several when it spreads its feeds over more than one socket. */
-export const ADAPTERS: Record<string, SiteAdapter | SiteAdapter[]> = { rustypot, csgogem, cases: [cases, casesCrash], clash: [clash, clashCrash], rusteasy };
+export const ADAPTERS: Record<string, SiteAdapter | SiteAdapter[]> = { rustypot, csgogem, cases: [cases, casesCrash], clash: [clash, clashCrash], rusteasy, banditcamp };
 
 export const adaptersFor = (site: string): SiteAdapter[] => {
   const a = ADAPTERS[site];

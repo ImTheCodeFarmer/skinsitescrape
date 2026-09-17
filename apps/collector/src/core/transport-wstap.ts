@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { Logger } from "pino";
 import type { SiteAdapter } from "./adapter.js";
-import { parsePairFrame, parseRawFrame, parseSocketIoFrame } from "./frames.js";
+import { parseEnvelopeFrame, parsePairFrame, parseRawFrame, parseSocketIoFrame } from "./frames.js";
 import type { TransportHooks, Transport } from "./transport.js";
 
 function findBinary(): string {
@@ -103,7 +103,7 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
         delay = 2_000;
         return;
       }
-      const parsed = protocol === "pair" ? parsePairFrame(d) : raw ? parseRawFrame(d) : parseSocketIoFrame(d);
+      const parsed = protocol === "envelope" ? parseEnvelopeFrame(d) : protocol === "pair" ? parsePairFrame(d) : raw ? parseRawFrame(d) : parseSocketIoFrame(d);
       if (parsed) hooks.onEvent({ event: parsed.event, args: parsed.args, receivedAt: new Date() });
     });
     createInterface({ input: child.stderr! }).on("line", (line) => {
@@ -162,7 +162,8 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
     emit: (event, ...args) => {
       if (!child?.stdin?.writable) return;
       const frame =
-        protocol === "pair" ? JSON.stringify([event, args.length ? args[0] : null])
+        protocol === "envelope" ? JSON.stringify({ a: [event, ...args], i: ++seq })
+        : protocol === "pair" ? JSON.stringify([event, args.length ? args[0] : null])
         : raw ? JSON.stringify([++seq, event, args[0]])
         : "42" + JSON.stringify([event, ...args]);
       child.stdin.write(frame + "\n");

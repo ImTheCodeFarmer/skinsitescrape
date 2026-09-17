@@ -46,3 +46,21 @@ export function parsePairFrame(s: string): { event: string; args: unknown[] } | 
     return null;
   }
 }
+
+/**
+ * Parse an `{"a":[event, ...args]}` frame (bandit.camp). Replies to our
+ * requests carry no `a`: `{"i":id, "d":data}` on success, surfaced as event
+ * "ack" with args [data, id], or `{"i":id, "e":{message}}` on failure,
+ * surfaced as event "nack" with args [error, id].
+ */
+export function parseEnvelopeFrame(s: string): { event: string; args: unknown[] } | null {
+  if (!s.startsWith("{")) return null;
+  try {
+    const o = JSON.parse(s) as { a?: unknown; i?: number; d?: unknown; e?: unknown };
+    if (Array.isArray(o.a) && typeof o.a[0] === "string") return { event: o.a[0], args: o.a.slice(1) };
+    if (typeof o.i !== "number") return null;
+    return "e" in o ? { event: "nack", args: [o.e, o.i] } : { event: "ack", args: [o.d, o.i] };
+  } catch {
+    return null;
+  }
+}

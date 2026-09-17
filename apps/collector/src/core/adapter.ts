@@ -27,9 +27,12 @@ export interface SiteAdapter {
      * query and frames events as "42[...]". "raw" connects to `url` verbatim
      * and frames as JSON arrays `[id, event, data]` (csgogem). "pair" also
      * connects verbatim and frames as `[event, data]` with no request ids
-     * (cases.gg). Only the wstap transport speaks "raw" and "pair".
+     * (cases.gg). "envelope" connects verbatim too and frames as objects,
+     * `{"a":[event, ...args], "i":id}` with replies `{"i":id, "d":data}`
+     * (bandit.camp). Only the wstap transport speaks "raw", "pair" and
+     * "envelope".
      */
-    protocol?: "socketio" | "raw" | "pair";
+    protocol?: "socketio" | "raw" | "pair" | "envelope";
   };
   /**
    * Name of this connection when a site runs more than one (cases.gg has a
