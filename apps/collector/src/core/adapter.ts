@@ -29,10 +29,14 @@ export interface SiteAdapter {
      * connects verbatim and frames as `[event, data]` with no request ids
      * (cases.gg). "envelope" connects verbatim too and frames as objects,
      * `{"a":[event, ...args], "i":id}` with replies `{"i":id, "d":data}`
-     * (bandit.camp). Only the wstap transport speaks "raw", "pair" and
-     * "envelope".
+     * (bandit.camp). "graphql" connects verbatim with the
+     * `graphql-transport-ws` subprotocol, sends `connection_init` and counts
+     * the `connection_ack` as the connect; `emit(name, query, variables)`
+     * subscribes with `name` as the message id, so every `next` for it
+     * arrives as event `name` with the payload's `data` (csgoroll). Only the
+     * wstap transport speaks "raw", "pair", "envelope" and "graphql".
      */
-    protocol?: "socketio" | "raw" | "pair" | "envelope";
+    protocol?: "socketio" | "raw" | "pair" | "envelope" | "graphql";
   };
   /**
    * Name of this connection when a site runs more than one (cases.gg has a

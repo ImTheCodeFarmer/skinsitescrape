@@ -292,6 +292,7 @@ func main() {
 	fp := flag.Bool("fp", false, "print our TLS fingerprint via tls.peet.ws and exit")
 	cookie := flag.String("cookie", os.Getenv("WS_COOKIE"), "Cookie header value (e.g. cf_clearance=...)")
 	ua := flag.String("ua", os.Getenv("WS_UA"), "override User-Agent (must match the browser that minted the cookie)")
+	subprotocol := flag.String("subprotocol", "", "Sec-WebSocket-Protocol to request (e.g. graphql-transport-ws)")
 	flag.Parse()
 
 	var proxy *url.URL
@@ -355,6 +356,7 @@ func main() {
 		cookieLine(*cookie) +
 		"Sec-WebSocket-Key: " + key + "\r\n" +
 		"Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits\r\n" +
+		subprotocolLine(*subprotocol) +
 		"\r\n"
 	if _, err := conn.Write([]byte(req)); err != nil {
 		fatal(3, "write upgrade: %v", err)
@@ -455,6 +457,14 @@ func cookieLine(c string) string {
 		return ""
 	}
 	return "Cookie: " + c + "\r\n"
+}
+
+// Chrome adds the subprotocol after the extensions (WebSocketHandshakeStreamBase::AddVectorHeaders).
+func subprotocolLine(p string) string {
+	if p == "" {
+		return ""
+	}
+	return "Sec-WebSocket-Protocol: " + p + "\r\n"
 }
 
 func fatal(code int, format string, a ...any) {

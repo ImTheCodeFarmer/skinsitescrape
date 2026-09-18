@@ -48,6 +48,36 @@ export function parsePairFrame(s: string): { event: string; args: unknown[] } | 
 }
 
 /**
+ * Parse a graphql-transport-ws message (csgoroll). The transport subscribes
+ * with the operation name as the message id, so a `next` surfaces as event
+ * `<operation>` with args [payload.data]. `error` (a failed subscription)
+ * surfaces as "error" with args [errors, id], `complete` as "complete" with
+ * args [id]. Control messages (connection_ack, ping, pong) keep their type as
+ * the event name and are handled by the transport.
+ */
+export function parseGraphqlFrame(s: string): { event: string; args: unknown[] } | null {
+  if (!s.startsWith("{")) return null;
+  try {
+    const o = JSON.parse(s) as { type?: string; id?: string; payload?: { data?: unknown; errors?: unknown } | unknown };
+    if (typeof o.type !== "string") return null;
+    const p = o.payload as { data?: unknown; errors?: unknown } | undefined;
+    switch (o.type) {
+      case "next":
+        if (typeof o.id !== "string") return null;
+        return p?.data !== undefined && p?.data !== null ? { event: o.id, args: [p.data] } : { event: "error", args: [p?.errors ?? p, o.id] };
+      case "error":
+        return { event: "error", args: [o.payload, o.id] };
+      case "complete":
+        return { event: "complete", args: [o.id] };
+      default:
+        return { event: o.type, args: o.payload === undefined ? [] : [o.payload] };
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parse an `{"a":[event, ...args]}` frame (bandit.camp). Replies to our
  * requests carry no `a`: `{"i":id, "d":data}` on success, surfaced as event
  * "ack" with args [data, id], or `{"i":id, "e":{message}}` on failure,

@@ -5,7 +5,8 @@
  *
  * Protocol with the child: NDJSON {"t":ms,"d":"<frame>"} on stdout, one
  * frame per line on stdin for sends. Engine.IO ping/pong and the "40"
- * namespace connect are handled inside the binary. Exit codes: 4 = upgrade
+ * namespace connect are handled inside the binary; the graphql-transport-ws
+ * handshake and keepalive are handled here. Exit codes: 4 = upgrade
  * refused (Cloudflare), 5 = read/send error, 6 = server closed.
  */
 import { spawn, type ChildProcess } from "node:child_process";
@@ -15,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { Logger } from "pino";
 import type { SiteAdapter } from "./adapter.js";
-import { parseEnvelopeFrame, parsePairFrame, parseRawFrame, parseSocketIoFrame } from "./frames.js";
+import { parseEnvelopeFrame, parseGraphqlFrame, parsePairFrame, parseRawFrame, parseSocketIoFrame } from "./frames.js";
 import type { TransportHooks, Transport } from "./transport.js";
 
 function findBinary(): string {
@@ -48,8 +49,9 @@ const HUNT_MAX = Number(process.env.PROXY_HUNT_MAX ?? 40); // refusals in a row 
 export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: Logger, proxyUrl?: string): Transport {
   const bin = findBinary();
   const { url, path = "/socket.io/", protocol = "socketio", query = {} } = adapter.connection;
-  /** Anything but Socket.IO: the upgrade itself is the connect, no Engine.IO handshake. */
+  /** Anything but Socket.IO: no Engine.IO handshake. The upgrade itself is the connect, except for graphql, which waits for its own ack. */
   const raw = protocol !== "socketio";
+  const graphql = protocol === "graphql";
   const wsUrl = new URL(url);
   if (!raw) {
     wsUrl.pathname = path;
@@ -66,6 +68,8 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
   let delay = 2_000;
   let lastFrame = 0;
   let watchdog: NodeJS.Timeout | null = null;
+  /** graphql-transport-ws keepalive; the server answers with a pong, which also feeds the watchdog. */
+  let keepalive: NodeJS.Timeout | null = null;
   /** Request id for the raw protocol; the server echoes it on the reply. */
   let seq = 0;
 
@@ -82,6 +86,7 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
   function start() {
     if (closed) return;
     const args = ["-url", wsUrl.toString(), "-origin", origin];
+    if (graphql) args.push("-subprotocol", "graphql-transport-ws");
     if (proxy) args.push("-proxy", proxy);
     child = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
     lastFrame = Date.now();
@@ -103,13 +108,36 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
         delay = 2_000;
         return;
       }
-      const parsed = protocol === "envelope" ? parseEnvelopeFrame(d) : protocol === "pair" ? parsePairFrame(d) : raw ? parseRawFrame(d) : parseSocketIoFrame(d);
-      if (parsed) hooks.onEvent({ event: parsed.event, args: parsed.args, receivedAt: new Date() });
+      const parsed =
+        graphql ? parseGraphqlFrame(d)
+        : protocol === "envelope" ? parseEnvelopeFrame(d)
+        : protocol === "pair" ? parsePairFrame(d)
+        : raw ? parseRawFrame(d)
+        : parseSocketIoFrame(d);
+      if (!parsed) return;
+      if (graphql) {
+        // The protocol's own control messages never reach the adapter.
+        if (parsed.event === "connection_ack") {
+          if (refusals) log.info({ refusals }, "found a clean proxy exit");
+          refusals = 0;
+          setConnected(true);
+          delay = 2_000;
+          return;
+        }
+        if (parsed.event === "ping") return void child?.stdin?.write(JSON.stringify({ type: "pong" }) + "\n");
+        if (parsed.event === "pong") return;
+      }
+      hooks.onEvent({ event: parsed.event, args: parsed.args, receivedAt: new Date() });
     });
     createInterface({ input: child.stderr! }).on("line", (line) => {
       if (line.startsWith("connected:")) {
         log.info(line);
-        if (raw) {
+        if (graphql) {
+          // Open the graphql-transport-ws session; connection_ack completes the connect.
+          child?.stdin?.write(JSON.stringify({ type: "connection_init", payload: {} }) + "\n");
+          keepalive = setInterval(() => child?.stdin?.write(JSON.stringify({ type: "ping" }) + "\n"), 30_000);
+          keepalive.unref();
+        } else if (raw) {
           // No namespace handshake on a raw socket: the upgrade itself is the connect.
           if (refusals) log.info({ refusals }, "found a clean proxy exit");
           refusals = 0;
@@ -125,6 +153,8 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
       child = null;
       if (watchdog) clearInterval(watchdog);
       watchdog = null;
+      if (keepalive) clearInterval(keepalive);
+      keepalive = null;
       setConnected(false, `wstap exited code=${code} signal=${signal}`);
       if (closed) return;
       let wait: number;
@@ -162,7 +192,8 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
     emit: (event, ...args) => {
       if (!child?.stdin?.writable) return;
       const frame =
-        protocol === "envelope" ? JSON.stringify({ a: [event, ...args], i: ++seq })
+        graphql ? JSON.stringify({ id: event, type: "subscribe", payload: { query: args[0], variables: args[1] ?? {} } })
+        : protocol === "envelope" ? JSON.stringify({ a: [event, ...args], i: ++seq })
         : protocol === "pair" ? JSON.stringify([event, args.length ? args[0] : null])
         : raw ? JSON.stringify([++seq, event, args[0]])
         : "42" + JSON.stringify([event, ...args]);
@@ -171,6 +202,7 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
     close: async () => {
       closed = true;
       if (watchdog) clearInterval(watchdog);
+      if (keepalive) clearInterval(keepalive);
       child?.kill("SIGTERM");
     },
   };

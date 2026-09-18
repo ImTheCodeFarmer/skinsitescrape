@@ -2,7 +2,7 @@
 
 Dashboard plus collector for skin-casino activity (Clash.gg, RustClash,
 Rustyloot, Rustypot, Cases.gg, Clash.gg, CSGOGem, RustEasy, Bandit.camp,
-RustMagic). pnpm monorepo.
+RustMagic, CSGORoll). pnpm monorepo.
 
 ```
 apps/web         Next.js + shadcn dashboard (currently on sample data)
@@ -84,7 +84,9 @@ within minutes, so it is not worth the browser it takes to mint.
 
 `TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
 `TRANSPORT=socketio` (plain client) remain as fallbacks for Socket.IO sites;
-only `wstap` speaks the raw protocols CSGOGem, Cases.gg and Bandit.camp use.
+only `wstap` speaks the raw protocols CSGOGem, Cases.gg, Bandit.camp and
+CSGORoll use (`-subprotocol` asks for a websocket subprotocol, which
+CSGORoll's GraphQL endpoint requires).
 
 The checked-in `apps/collector/wstap/wstap` is whatever machine last ran
 `build:wstap` (a macOS arm64 build at the time of writing); the Docker image
@@ -267,6 +269,36 @@ only public trace is `betting:live-bets`, the site's live bet table, which
 does show losses but carries no bet or user ids and is dripped at one row a
 second, so its completeness under load is unknown. By decision on 2026-09-17
 it is not collected, not even raw.
+
+## CSGORoll
+
+GraphQL subscriptions over `graphql-transport-ws` at
+`wss://www.csgoroll.com/ws` (`protocol: "graphql"`: the transport asks for
+the subprotocol, sends `connection_init`, treats `connection_ack` as the
+connect and answers the server's pings; `emit(name, query, variables)`
+subscribes with `name` as the message id, so `next` messages arrive as event
+`name`). Behind Cloudflare, fine through `wstap` without a proxy as of
+2026-09-18, though a burst of a dozen connections in a few minutes got the
+IP challenged for about twenty minutes. A guest may subscribe but not query
+(any `query` closes the socket with 4401), so the lobbies the site loads over
+HTTP are out of reach and only pushed data counts. Amounts are decimal coins
+(`TKN`); the site's own `ExchangeRateList` gives $0.70 a coin, and its Case
+Royale rows confirm it (`totalBet` 10.58 TKN, `totalBetBase` 7.406 USD).
+Values it labels `USD` are USD. Ids are Relay ids (`QmF0dGxlOjQwMDUwNDU`,
+base64 of `Battle:4005045`), kept verbatim because the site's URLs use them.
+
+| Mode | Subscription | Settlement | `game` |
+|---|---|---|---|
+| PVP 2.0 (case battles) | `battleUpdated(statuses: [FINISHED, CANCELLED])`, with a document asking for the whole battle, so one message carries the seats, `won` flags, seat cost and `totalPulled` | Every seat pays `costOriginal` (the rounds' box costs); the seats with `won` split `totalPulled` (USD) equally, exact for a single winner and for `T<n>` group mode where everyone wins, assumed for team modes. `sponsorship.percentage` is taken off every other seat and onto the creator's, by assumption (it was null throughout). Battles paid in `BOX_KEY` are kept raw only. The house's "Bot #n" users are stored as house players. | `battles` |
+| Roll | `createGame`, `createBet` (no game id: it belongs to the latest created game), `updateGame` (`rollValue` 0..14) | A bet pays 14 divided by the number of `selections` when the roll is among them: 0 green 14x, 1..7 red or 8..14 black 2x, [4, 11] bait 7x. Bets seen before the first `createGame` after a connect are dropped. | `roulette` |
+| Crash | `createCrashGame`, `createCrashBet`, `updateCrashBet` (a cash-out: `tick`, `totalWinAmount`), `updateCrashGame` (FINISHED with `roll` in hundredths, or `cancelledReason`) | Cashed-out bets take `totalWinAmount`, the rest lose. Bets on a game whose creation was not seen are settled anyway and marked `partial`. | `crash` |
+| Dice and Upgrader | `createDiceBets`, every bet on the site, losses included, `gameType` DICE or UPGRADE | `totalBet` and `totalPayout` as sent. | `dice`, `upgrader` |
+| Case Royale | `createOrUpdateBoxJackpotPlayer` (`totalBetBase` in USD, `won` once drawn, the game's `totalPayout`); `updateBoxJackpotGame` raw only | Each entrant stakes `totalBetBase`; the one with `won` takes `totalPayout`. Inferred from the schema and the site's history query, not yet observed live (about one round an hour). | `royale` |
+
+**Not tracked:** case openings, Arms Dealer and Cluck 'n' Boom (mines) are
+private games whose only public trace is the chat's big-win messages;
+esports only pushes match odds; Plinko's `createPlinkoBet` subscription
+closes the socket with 4401 for a guest, even with the site's own document.
 
 ## Sign in with Steam
 
