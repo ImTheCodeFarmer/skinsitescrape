@@ -16,8 +16,10 @@ export function NumberTicker({ value, format, className, delay = 0 }: Props) {
   const mv = useMotionValue(0);
   const spring = useSpring(mv, { damping: 42, stiffness: 120 });
   const inView = useInView(ref, { once: true, margin: "0px" });
+  // Round before formatting so a spring passing through 2.417 never prints decimals:
+  // a count of 7 steps 0, 1, 2 … 7 instead of growing extra digits mid-flight.
   const fmt = React.useCallback(
-    (n: number) => (format ? format(n) : Math.round(n).toLocaleString("en-US")),
+    (n: number) => (format ? format(Math.round(n)) : Math.round(n).toLocaleString("en-US")),
     [format],
   );
 

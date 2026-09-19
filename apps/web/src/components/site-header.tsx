@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { RangeTabs } from "@/components/range-tabs";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { UserMenu, type SessionView } from "@/components/user-menu";
@@ -20,8 +19,7 @@ export function SiteHeader({ anyConnected, session }: { anyConnected: boolean; s
 
   return (
     <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/60 bg-background/80 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:h-14 sm:flex-nowrap sm:py-0">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="hidden h-5! sm:block" />
+      <SidebarTrigger className="-ml-1 mr-1" />
       <nav className="flex min-w-0 items-center gap-1.5 text-sm">
         <Link href={`/${qs}`} className="text-muted-foreground transition-[color] duration-150 ease-out hover:text-foreground">Overview</Link>
         {casino ? (
@@ -41,7 +39,6 @@ export function SiteHeader({ anyConnected, session }: { anyConnected: boolean; s
         </span>
         <AutoRefresh />
         <div className="hidden sm:block"><RangeTabs /></div>
-        <Separator orientation="vertical" className="hidden h-5! sm:block" />
         <UserMenu session={session} />
       </div>
       <div className="basis-full sm:hidden"><RangeTabs /></div>

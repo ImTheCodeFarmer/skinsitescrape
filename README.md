@@ -121,13 +121,14 @@ neither volume nor house net can be measured, and case openings are not on
 the socket at all (`case` is rejected). The dashboard says so on the
 CSGOGem page.
 
-## Cases.gg and Clash.gg (the Clash platform)
+## Cases.gg, Clash.gg and RustClash (the Clash platform)
 
-Both sites run the same platform: two plain websockets, both `[event, data]`
-frames (`protocol: "pair"`), both behind Cloudflare and both fine through
-`wstap` without a proxy as of 2026-09-16. The handlers live in
-`adapters/clash-family/` as per-site factories; `adapters/cases` and
-`adapters/clash` are thin configurations. Each site runs as two connections
+All three sites run the same platform: two plain websockets, both `[event, data]`
+frames (`protocol: "pair"`), all behind Cloudflare and fine through
+`wstap` without a proxy as of 2026-09-16 (RustClash needed a short proxy
+hunt from a residential exit on 2026-09-19). The handlers live in
+`adapters/clash-family/` as per-site factories; `adapters/cases`,
+`adapters/clash` and `adapters/rustclash` are thin configurations. Each site runs as two connections
 (`ADAPTERS.<site>` is a list); the status row counts the site as connected
 only while both are up, and `reparse` replays raw rows through both.
 
@@ -149,6 +150,18 @@ sockets need nothing special.
 
 **Clash.gg, not tracked:** case openings, the upgrader, mines and tiles are
 private games whose only public trace is the `drops` ticker (wins only).
+
+RustClash: `wss://ws.rustclash.com/` (channels `battles`, `roulette`,
+`plinko`; no champion game) and `wss://cgs.rustclash.com/` for crash (the
+Cases.gg host name, not Clash.gg's `gs.`). Cents of gems at $0.60, the same
+`GEM_USD`. Battles, Double, Plinko and Crash settle exactly as Clash.gg
+above and land under the same `game` names. Battle pages are
+`https://rustclash.com/battles/<id>`.
+
+**RustClash, not tracked:** case openings, the upgrader, mines, roll and
+tiles. A real Chrome on each of those pages opened no socket channel, and
+subscribing to `roll`, `drops` and `crash` on the main socket produced
+nothing, so they are private HTTP games with no public feed.
 
 Cases.gg: `wss://ws.cases.gg/` and `wss://cgs.cases.gg/`, cents of USD.
 
