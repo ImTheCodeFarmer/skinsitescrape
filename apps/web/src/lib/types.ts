@@ -204,3 +204,46 @@ export type LiveOverview = {
   games: GameStat[];
   players: (PlayerStat & { site: string })[];
 };
+
+// ---------------------------------------------------------------- player profiles
+
+export type LinkEvidence = { steam: boolean; avatar: boolean; avatarOwners: number; name: boolean; sharedDays: number; daysA: number; daysB: number };
+
+/** One account on one site. */
+export type Account = { site: string; id: string; handle: string; avatar: string | null; firstSeen: string | null; lastSeen: string | null };
+
+/** Another account we believe belongs to the same person, with how sure we are. */
+export type LinkedAccount = Account & {
+  /** 0..1. Along a chain of links, the weakest link. */
+  score: number;
+  evidence: LinkEvidence;
+  /** 1 when linked to the profile's account directly, 2 through another account. */
+  hops: number;
+};
+
+export type PlayerTotals = {
+  wagered: number;
+  payout: number;
+  /** Player's profit and loss: payout minus wagered. */
+  net: number;
+  bets: number;
+  wins: number;
+  activeDays: number;
+  favorite: string;
+};
+
+/** Per-bucket wager and player net, for the profile chart. */
+export type PlayerPoint = { t: string; wagered: number; net: number; bets: number };
+
+export type AccountStats = { account: Account; totals: PlayerTotals; series: PlayerPoint[]; games: GameStat[]; recent: BetRow[] };
+
+export type PlayerProfile = {
+  range: Range;
+  anchor: Account;
+  linked: LinkedAccount[];
+  /** Accounts counted in the totals: the anchor plus links at or above `countedAt`. */
+  countedAt: number;
+  counted: AccountStats[];
+  totals: PlayerTotals;
+  combined: { series: PlayerPoint[]; games: GameStat[]; recent: BetRow[] };
+};

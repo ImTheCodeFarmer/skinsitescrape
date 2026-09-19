@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Link2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/kpi-card";
 import { Reveal, Stagger } from "@/components/reveal";
 import { CasinoLogo } from "@/components/casino-logo";
+import { PlayerAvatar, profileHref } from "@/components/player-link";
 import { Sparkline } from "@/components/sparkline";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CompareChart } from "@/components/charts/compare-chart";
@@ -175,10 +176,11 @@ export function OverviewView(initial: OverviewData) {
               const m = metaOf(p.site);
               return (
                 <motion.div key={`${p.site}-${p.id}`} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15, ease: "easeOut" } }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
-                <Link href={`/casino/${p.site}?range=${range}`} className="flex items-center gap-3 rounded-lg px-3 py-2.5 shadow-border transition-[background-color,box-shadow] duration-150 ease-out hover:bg-muted/60 hover:shadow-border-hover">
+                <Link href={`${profileHref(p.site, p.id)}?range=${range}`} title={`${p.handle}'s profile`} className="group/player flex items-center gap-3 rounded-lg px-3 py-2.5 shadow-border transition-[background-color,box-shadow] duration-150 ease-out hover:bg-muted/60 hover:shadow-border-hover">
                   <span className="text-xs text-muted-foreground tabular-nums">{i + 1}</span>
+                  <PlayerAvatar name={p.handle} avatar={p.avatar} color={m?.color ?? "#888"} size={28} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{p.handle}</span>
+                    <span className="flex items-center gap-1.5 text-sm font-medium"><span className="truncate group-hover/player:underline">{p.handle}</span><Link2 aria-hidden className="size-3 shrink-0 text-muted-foreground opacity-60 transition-[opacity] duration-150 ease-out group-hover/player:opacity-100" strokeWidth={1.5} /></span>
                     <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <span className="size-1.5 rounded-full" style={{ background: m?.color }} />
                       {m?.name ?? p.site} · {count(p.bets)} bets

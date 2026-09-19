@@ -350,6 +350,39 @@ Raw only: `coinflip:*` and `WOF*` (round detail the stats do not need),
 leaderboards, emoji tallies and the blackjack table's card-by-card stream
 are dropped.
 
+## Player profiles and identity links
+
+`/player/<site>/<id>` shows one account and every account on another site
+we believe is the same person: totals across them, a profit and loss chart,
+game mix and recent bets, then one tab per site. Player names on the
+leaderboards and bet tables link there.
+
+Links live in `player_links`, one row per pair of accounts on different
+sites with a score from 0 to 1 and the evidence as JSON. Player rows are
+never merged; the page reads the links and shows the confidence, so a link
+can change or disappear when the evidence does. The
+`refresh_player_links` TimescaleDB job recomputes the table from scratch
+every hour (migration 0011; run `CALL refresh_player_links(0, NULL)` to
+refresh by hand).
+
+| Evidence | Score | Why |
+|---|---|---|
+| Same Steam64 id | 1.0 | Rustypot and RustEasy key players by Steam id. |
+| Same Steam profile picture and same name | 0.98 | Sites that pass the `avatars.steamstatic.com` URL through expose its content hash; two accounts share it only when they are the same Steam account or uploaded the same image. Default pictures and any hash owned by more than six accounts are ignored. |
+| Same Steam profile picture | 0.9, or 0.75 when a few other accounts share it | |
+| Same display name only | 0.35 to 0.45 by length, +0.2 when both were active on 3 or more of the same days, −0.15 when they never were despite regular play on both | Names are normalized to lower-case letters and digits, must be five or more characters, and must be rare (at most four accounts). |
+
+The page labels scores as **Same person** (95%+), **Very likely** (70%+),
+**Possibly** (40%+) and **Weak match**. Links at 70% or higher count toward
+the totals and get a tab; weaker ones are listed with their confidence but
+kept out. Following a chain of links (A to B to C) the confidence is the
+weakest link, and chains stop after two hops.
+
+Not yet in the score: perceptual hashing of re-hosted avatars (CSGOGem
+serves them through Cloudflare Images, so the URL hash is lost), name
+similarity short of an exact match, and bet-size or time-of-day profiles.
+Anonymous players (stored as "Anonymous") are excluded by the name rule.
+
 ## Sign in with Steam
 
 The 24 hour and 7 day views are public and 7 days is the default. The 30

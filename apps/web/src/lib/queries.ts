@@ -3,7 +3,7 @@ import { sql } from "@casino/db";
 import { db } from "./db";
 import { CASINOS, gameLabel, getCasinoMeta } from "./casinos";
 import { memo, ttlFor } from "./memo";
-import type { BetRow, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary } from "./types";
+import type { Account, AccountStats, BetRow, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, LinkEvidence, LinkedAccount, PlayerPoint, PlayerProfile, PlayerStat, PlayerTotals, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary } from "./types";
 
 /** Whether a site has coinflip / jackpot detail (rounds tables, breakdown, pot records). */
 const hasPots = (site: string) => Boolean(getCasinoMeta(site)?.pots);
@@ -590,4 +590,182 @@ async function highlightsQuery(site: string, range: Range): Promise<Highlights> 
     ? { amount: n(peak.wagered), at: iso(peak.bucket), game: "hourly", roundId: "", caption: `${new Intl.NumberFormat("en-US").format(n(peak.bets))} bets in the hour from ${new Date(peak.bucket as string).toLocaleTimeString("en-US", { hour: "numeric", hour12: true, timeZone: "UTC" })} UTC`, players: [] }
     : null;
   return { biggestFlip, biggestPlayerWin, biggestSiteWin, biggestJackpot, longestShot, longestStreak, biggestBotLoss, peakHour };
+}
+
+// ---------------------------------------------------------------- player profiles
+
+/** Links at or above this score count toward a profile's totals; weaker ones are shown but kept separate. */
+export const COUNTED_AT = 0.7;
+
+const accountOf = (x: Row): Account => ({
+  site: String(x.site),
+  id: String(x.external_id),
+  handle: str(x.display_name) ?? String(x.external_id),
+  avatar: str(x.avatar),
+  firstSeen: x.first_seen ? iso(x.first_seen) : null,
+  lastSeen: x.last_seen ? iso(x.last_seen) : null,
+});
+
+export async function account(site: string, id: string): Promise<Account | null> {
+  const r = await rows(sql`SELECT site, external_id, display_name, avatar, first_seen, last_seen FROM players WHERE site = ${site} AND external_id = ${id} AND NOT is_house`);
+  return r[0] ? accountOf(r[0]) : null;
+}
+
+/**
+ * Accounts linked to this one, directly or through one other account. A
+ * chain's confidence is its weakest link; an account reachable more than
+ * one way keeps the best.
+ */
+export async function linkedAccounts(site: string, id: string): Promise<LinkedAccount[]> {
+  const r = await rows(sql`
+    WITH RECURSIVE walk AS (
+      SELECT other_site AS site, other_player AS player, score, evidence, 1 AS hops
+      FROM player_links_both WHERE site = ${site} AND player = ${id}
+      UNION ALL
+      SELECT l.other_site, l.other_player, LEAST(w.score, l.score), l.evidence, w.hops + 1
+      FROM walk w JOIN player_links_both l ON l.site = w.site AND l.player = w.player
+      WHERE w.hops < 2 AND NOT (l.other_site = ${site} AND l.other_player = ${id})
+    ),
+    best AS (
+      SELECT site, player, max(score) AS score, (array_agg(evidence ORDER BY score DESC, hops))[1] AS evidence, min(hops) AS hops
+      FROM walk GROUP BY site, player
+    )
+    SELECT b.site, b.player AS external_id, b.score, b.evidence, b.hops, p.display_name, p.avatar, p.first_seen, p.last_seen
+    FROM best b JOIN players p ON p.site = b.site AND p.external_id = b.player
+    ORDER BY b.score DESC, p.last_seen DESC`);
+  return r.map((x) => ({ ...accountOf(x), score: n(x.score), evidence: x.evidence as LinkEvidence, hops: n(x.hops) }));
+}
+
+const accountFilter = (accounts: Account[], alias: string) =>
+  accounts.length
+    ? sql`(${sql.join(accounts.map((a) => sql`(${sql.raw(alias)}.site = ${a.site} AND ${sql.raw(alias)}.player_id = ${a.id})`), sql` OR `)})`
+    : sql`false`;
+
+const emptyTotals = (): PlayerTotals => ({ wagered: 0, payout: 0, net: 0, bets: 0, wins: 0, activeDays: 0, favorite: "" });
+
+/** Per-account stats over the range, from the bets themselves (24h) or the daily rollup. */
+async function accountTotals(accounts: Account[], range: Range): Promise<Map<string, PlayerTotals>> {
+  const { from, to } = window(range);
+  const out = new Map<string, PlayerTotals>();
+  if (!accounts.length) return out;
+  const r =
+    range === 1
+      ? await rows(sql`
+          SELECT b.site, b.player_id, sum(wagered_usd) wagered, sum(payout_usd) payout, count(*) bets, count(*) FILTER (WHERE won) wins,
+                 count(DISTINCT date_trunc('day', placed_at)) active_days, mode() WITHIN GROUP (ORDER BY game) favorite
+          FROM bets b WHERE settled_at IS NOT NULL AND NOT is_house AND placed_at >= ${from} AND placed_at < ${to} AND ${accountFilter(accounts, "b")}
+          GROUP BY b.site, b.player_id`)
+      : await rows(sql`
+          WITH d AS (
+            SELECT b.site, b.player_id, b.game, sum(wagered_usd) wagered, sum(payout_usd) payout, sum(bets) bets, count(DISTINCT bucket) days
+            FROM player_daily b WHERE bucket >= ${from} AND bucket < ${to} AND ${accountFilter(accounts, "b")}
+            GROUP BY b.site, b.player_id, b.game),
+          w AS (
+            SELECT b.site, b.player_id, count(*) FILTER (WHERE won) wins
+            FROM bets b WHERE settled_at IS NOT NULL AND NOT is_house AND placed_at >= ${from} AND placed_at < ${to} AND ${accountFilter(accounts, "b")}
+            GROUP BY b.site, b.player_id)
+          SELECT d.site, d.player_id, sum(wagered) wagered, sum(payout) payout, sum(bets) bets, max(w.wins) wins,
+                 (SELECT count(DISTINCT bucket) FROM player_daily x WHERE x.site = d.site AND x.player_id = d.player_id AND bucket >= ${from} AND bucket < ${to}) active_days,
+                 (array_agg(game ORDER BY wagered DESC))[1] favorite
+          FROM d LEFT JOIN w ON w.site = d.site AND w.player_id = d.player_id
+          GROUP BY d.site, d.player_id`);
+  for (const x of r) {
+    out.set(`${x.site}:${x.player_id}`, {
+      wagered: n(x.wagered), payout: n(x.payout), net: n(x.payout) - n(x.wagered), bets: n(x.bets), wins: n(x.wins),
+      activeDays: n(x.active_days), favorite: gameLabel(String(x.favorite ?? "")),
+    });
+  }
+  return out;
+}
+
+/** Wager and player net per bucket for a set of accounts, summed. */
+async function accountSeries(accounts: Account[], range: Range): Promise<PlayerPoint[]> {
+  if (!accounts.length) return [];
+  const { from, to } = window(range);
+  const r =
+    range === 1
+      ? await rows(sql`
+          SELECT date_trunc('hour', placed_at) t, sum(wagered_usd) wagered, sum(payout_usd - wagered_usd) net, count(*) bets
+          FROM bets b WHERE settled_at IS NOT NULL AND NOT is_house AND placed_at >= ${from} AND placed_at < ${to} AND ${accountFilter(accounts, "b")}
+          GROUP BY 1 ORDER BY 1`)
+      : await rows(sql`
+          SELECT bucket t, sum(wagered_usd) wagered, sum(payout_usd - wagered_usd) net, sum(bets) bets
+          FROM player_daily b WHERE bucket >= ${from} AND bucket < ${to} AND ${accountFilter(accounts, "b")}
+          GROUP BY 1 ORDER BY 1`);
+  return r.map((x) => ({ t: iso(x.t), wagered: n(x.wagered), net: n(x.net), bets: n(x.bets) }));
+}
+
+/** Games a set of accounts played in the range. `net` is the house's, as on the site pages. */
+async function accountGames(accounts: Account[], range: Range): Promise<GameStat[]> {
+  if (!accounts.length) return [];
+  const { from, to } = window(range);
+  const r =
+    range === 1
+      ? await rows(sql`
+          SELECT game, sum(wagered_usd) wagered, count(*) plays, sum(wagered_usd - payout_usd) net
+          FROM bets b WHERE settled_at IS NOT NULL AND NOT is_house AND placed_at >= ${from} AND placed_at < ${to} AND ${accountFilter(accounts, "b")}
+          GROUP BY game ORDER BY wagered DESC`)
+      : await rows(sql`
+          SELECT game, sum(wagered_usd) wagered, sum(bets) plays, sum(wagered_usd - payout_usd) net
+          FROM player_daily b WHERE bucket >= ${from} AND bucket < ${to} AND ${accountFilter(accounts, "b")}
+          GROUP BY game ORDER BY wagered DESC`);
+  return r.map((x) => ({ name: gameLabel(String(x.game)), wagered: n(x.wagered), plays: n(x.plays), net: n(x.net) }));
+}
+
+/** Newest settled bets by a set of accounts. Rows carry the site so a mixed list can link each round to its site. */
+async function accountBets(accounts: Account[], range: Range, limit = 25): Promise<(BetRow & { site: string })[]> {
+  if (!accounts.length) return [];
+  const hours = range === 1 ? 24 : range * 24;
+  const r = await rows(sql`
+    SELECT b.site, b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar
+    FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
+    WHERE NOT b.is_house AND b.settled_at IS NOT NULL AND ${accountFilter(accounts, "b")}
+      AND b.placed_at >= now() - make_interval(hours => ${hours}) - interval '1 day' AND b.settled_at >= now() - make_interval(hours => ${hours})
+    ORDER BY b.settled_at DESC LIMIT ${limit}`);
+  return r.map((x) => ({
+    site: String(x.site),
+    id: `${x.site}:${x.game}:${x.external_id}`,
+    game: String(x.game),
+    roundId: str(x.round_id),
+    placedAt: iso(x.placed_at),
+    settledAt: iso(x.settled_at),
+    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar) },
+    wagered: n(x.wagered_usd),
+    payout: n(x.payout_usd),
+    won: x.won == null ? null : Boolean(x.won),
+  }));
+}
+
+const sumTotals = (parts: PlayerTotals[]): PlayerTotals => {
+  const t = emptyTotals();
+  let best: { g: string; w: number } | null = null;
+  for (const p of parts) {
+    t.wagered += p.wagered; t.payout += p.payout; t.net += p.net; t.bets += p.bets; t.wins += p.wins; t.activeDays = Math.max(t.activeDays, p.activeDays);
+    if (p.favorite && (!best || p.wagered > best.w)) best = { g: p.favorite, w: p.wagered };
+  }
+  t.favorite = best?.g ?? "";
+  return t;
+};
+
+/** Everything the profile page shows for one account and the accounts linked to it. */
+export async function playerProfile(site: string, id: string, range: Range): Promise<PlayerProfile | null> {
+  const anchor = await account(site, id);
+  if (!anchor) return null;
+  const linked = await linkedAccounts(site, id);
+  const countedAccounts: Account[] = [anchor, ...linked.filter((l) => l.score >= COUNTED_AT)];
+  const [totalsBy, series, games, recent, ...perAccount] = await Promise.all([
+    accountTotals(countedAccounts, range),
+    accountSeries(countedAccounts, range),
+    accountGames(countedAccounts, range),
+    accountBets(countedAccounts, range, 30),
+    ...countedAccounts.map((a) => Promise.all([accountSeries([a], range), accountGames([a], range), accountBets([a], range, 20)])),
+  ]);
+  const counted: AccountStats[] = countedAccounts.map((a, i) => ({
+    account: a,
+    totals: totalsBy.get(`${a.site}:${a.id}`) ?? emptyTotals(),
+    series: perAccount[i][0],
+    games: perAccount[i][1],
+    recent: perAccount[i][2],
+  }));
+  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: sumTotals(counted.map((c) => c.totals)), combined: { series, games, recent } };
 }

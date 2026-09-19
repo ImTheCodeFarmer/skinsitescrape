@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
 import { Flame } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { PlayerLink } from "@/components/player-link";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PlayerStat } from "@/lib/types";
 import { count, money } from "@/lib/format";
@@ -18,11 +18,8 @@ const rowAnim = {
   transition: { type: "spring" as const, stiffness: 260, damping: 26 },
 };
 
-function initials(h: string) {
-  return h.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "?";
-}
 
-export function TopPlayersTable({ players, color, limit = 10, rangeDays }: { players: PlayerStat[]; color: string; limit?: number; rangeDays?: number }) {
+export function TopPlayersTable({ players, color, site, limit = 10, rangeDays }: { players: PlayerStat[]; color: string; site: string; limit?: number; rangeDays?: number }) {
   if (!players.length) return <p className="px-4 py-8 text-center text-sm text-muted-foreground">No settled bets in this range yet.</p>;
   return (
     <Table>
@@ -42,13 +39,7 @@ export function TopPlayersTable({ players, color, limit = 10, rangeDays }: { pla
           <MotionRow key={p.id} layout {...rowAnim}>
             <TableCell className="text-muted-foreground tabular-nums">{i + 1}</TableCell>
             <TableCell>
-              <span className="flex items-center gap-2.5">
-                {p.avatar?.startsWith("http") ? (
-                  <Image src={p.avatar} alt="" width={28} height={28} unoptimized className="size-7 rounded-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
-                ) : (
-                  <span className="grid size-7 place-items-center rounded-full text-[10px] font-semibold" style={{ background: `${color}22`, color }}>{initials(p.handle)}</span>
-                )}
-                <span className="max-w-[14rem] truncate font-medium">{p.handle}</span>
+              <PlayerLink site={site} id={p.id} name={p.handle} avatar={p.avatar} color={color} size={28} className="gap-2.5" nameClassName="max-w-[14rem] font-medium">
                 {p.activeDays >= 5 ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -62,7 +53,7 @@ export function TopPlayersTable({ players, color, limit = 10, rangeDays }: { pla
                     </TooltipContent>
                   </Tooltip>
                 ) : null}
-              </span>
+              </PlayerLink>
             </TableCell>
             <TableCell className="text-right font-mono tabular-nums">{money(p.wagered)}</TableCell>
             <TableCell className={cn("text-right font-mono tabular-nums", p.net >= 0 ? "text-emerald-400" : "text-rose-400")}>

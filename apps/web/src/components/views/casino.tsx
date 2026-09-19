@@ -141,7 +141,7 @@ export function CasinoView(initial: CasinoData) {
                   <CardTitle>Top players</CardTitle>
                   <CardDescription>By total wagered in range</CardDescription>
                 </CardHeader>
-                <CardContent className="px-2"><TopPlayersTable players={players} color={casino.color} rangeDays={range === 1 ? undefined : range} /></CardContent>
+                <CardContent className="px-2"><TopPlayersTable players={players} color={casino.color} site={casino.slug} rangeDays={range === 1 ? undefined : range} /></CardContent>
               </Card>
             </Reveal>
             <Reveal className="lg:col-span-2">
@@ -164,7 +164,7 @@ export function CasinoView(initial: CasinoData) {
                 <CardDescription>{hasPots ? "Latest settled games in range, newest first" : "Latest settled bets by players, newest first"}</CardDescription>
               </CardHeader>
               <CardContent className="px-2">
-                {hasPots ? <RoundsTable flips={flips} pots={pots} color={casino.color} /> : <BetsTable bets={bets} color={casino.color} meta={casino} />}
+                {hasPots ? <RoundsTable flips={flips} pots={pots} color={casino.color} site={casino.slug} /> : <BetsTable bets={bets} color={casino.color} meta={casino} />}
               </CardContent>
             </Card>
           </Reveal>
