@@ -25,7 +25,7 @@ export function UserMenu({ session }: { session: SessionView | null }) {
   }
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted">
+      <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-[background-color] duration-150 ease-out hover:bg-muted">
         <Avatar className="size-6">
           {session.avatar ? <AvatarImage src={session.avatar} alt="" /> : null}
           <AvatarFallback className="text-[10px]">{session.name.slice(0, 2).toUpperCase()}</AvatarFallback>
@@ -41,7 +41,7 @@ export function UserMenu({ session }: { session: SessionView | null }) {
         <form action={`/api/auth/logout?next=${encodeURIComponent(here)}`} method="post">
           <DropdownMenuItem asChild>
             <button type="submit" className="w-full">
-              <LogOut className="size-4" />
+              <LogOut className="size-4" strokeWidth={1.5} />
               Sign out
             </button>
           </DropdownMenuItem>

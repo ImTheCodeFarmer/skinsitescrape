@@ -29,7 +29,7 @@ export function GameShare({ games, color }: { games: GameStat[]; color: string }
                 transition={{ delay: 0.15 + i * 0.05, type: "spring", stiffness: 90, damping: 20 }}
               />
             </div>
-            <div className="mt-1 flex justify-between text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="mt-1 flex justify-between text-[11px] text-muted-foreground opacity-0 transition-[opacity] duration-150 ease-out group-hover:opacity-100">
               <span>{countShort(g.plays)} plays</span>
               <span>{g.wagered ? ((g.net / g.wagered) * 100).toFixed(1) : "0.0"}% edge</span>
             </div>

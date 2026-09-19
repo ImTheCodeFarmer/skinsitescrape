@@ -14,7 +14,7 @@ const MotionRow = motion.create(TableRow);
 const rowAnim = {
   initial: { opacity: 0, y: -10 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0 },
+  exit: { opacity: 0, transition: { duration: 0.15, ease: "easeOut" as const } },
   transition: { type: "spring" as const, stiffness: 260, damping: 26 },
 };
 
@@ -22,13 +22,13 @@ function Who({ name, avatar, color }: { name: string; avatar: string | null; col
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
       {avatar?.startsWith("http") ? (
-        <Image src={avatar} alt="" width={22} height={22} unoptimized className="size-[22px] shrink-0 rounded-full object-cover" />
+        <Image src={avatar} alt="" width={22} height={22} unoptimized className="size-[22px] shrink-0 rounded-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
       ) : (
         <span className="grid size-[22px] shrink-0 place-items-center rounded-full text-[9px] font-semibold" style={{ background: `${color}22`, color }}>
           {name.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "?"}
         </span>
       )}
-      <span className="max-w-[10rem] truncate">{name}</span>
+      <span className="max-w-[5.5rem] truncate sm:max-w-[10rem]">{name}</span>
     </span>
   );
 }
@@ -59,7 +59,7 @@ export function BetsTable({ bets, color, meta }: { bets: BetRow[]; color: string
                 <TableCell>
                   {(() => {
                     const href = roundUrl(meta, b.game, b.roundId);
-                    const badge = <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{gameLabel(b.game)}{href ? <ExternalLink className="ml-1 size-2.5" /> : null}</Badge>;
+                    const badge = <Badge variant="outline" className="whitespace-nowrap px-1.5 py-0 text-[10px] font-normal">{gameLabel(b.game)}{href ? <ExternalLink className="ml-1 size-2.5" strokeWidth={1.5} /> : null}</Badge>;
                     return href ? <a href={href} target="_blank" rel="noreferrer" title="Open on the site" className="hover:opacity-80">{badge}</a> : badge;
                   })()}
                 </TableCell>

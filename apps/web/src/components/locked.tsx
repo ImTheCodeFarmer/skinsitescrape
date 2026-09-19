@@ -19,7 +19,7 @@ export function Locked({ range, children }: { range: Range; children: React.Reac
         {children}
       </div>
       <div className="absolute inset-0 z-10 flex items-start justify-center pt-24 md:pt-40">
-        <div className="mx-4 w-full max-w-md rounded-xl border border-border/80 bg-background/95 p-6 shadow-2xl backdrop-blur">
+        <div className="mx-4 w-full max-w-md rounded-xl bg-background/95 p-6 shadow-2xl ring-1 ring-foreground/10 backdrop-blur">
           <div className="mb-3 flex size-10 items-center justify-center rounded-lg bg-muted">
             <Lock className="size-5" />
           </div>

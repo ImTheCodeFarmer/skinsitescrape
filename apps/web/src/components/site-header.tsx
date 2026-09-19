@@ -19,15 +19,15 @@ export function SiteHeader({ anyConnected, session }: { anyConnected: boolean; s
   const qs = params.get("range") ? `?range=${params.get("range")}` : "";
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border/60 bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/60 bg-background/80 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:h-14 sm:flex-nowrap sm:py-0">
       <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="h-5!" />
-      <nav className="flex items-center gap-1.5 text-sm">
-        <Link href={`/${qs}`} className="text-muted-foreground hover:text-foreground">Overview</Link>
+      <Separator orientation="vertical" className="hidden h-5! sm:block" />
+      <nav className="flex min-w-0 items-center gap-1.5 text-sm">
+        <Link href={`/${qs}`} className="text-muted-foreground transition-[color] duration-150 ease-out hover:text-foreground">Overview</Link>
         {casino ? (
           <>
-            <ChevronRight className="size-3.5 text-muted-foreground/60" />
-            <span className="font-medium">{casino.name}</span>
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" strokeWidth={1.5} />
+            <span className="truncate font-medium">{casino.name}</span>
           </>
         ) : null}
       </nav>
@@ -40,10 +40,11 @@ export function SiteHeader({ anyConnected, session }: { anyConnected: boolean; s
           {anyConnected ? "Live" : "Collector offline"}
         </span>
         <AutoRefresh />
-        <RangeTabs />
-        <Separator orientation="vertical" className="h-5!" />
+        <div className="hidden sm:block"><RangeTabs /></div>
+        <Separator orientation="vertical" className="hidden h-5! sm:block" />
         <UserMenu session={session} />
       </div>
+      <div className="basis-full sm:hidden"><RangeTabs /></div>
     </header>
   );
 }

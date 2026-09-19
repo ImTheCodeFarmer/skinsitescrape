@@ -10,7 +10,7 @@ import type { CasinoMeta, Highlight, HighlightPlayer, Highlights } from "@/lib/t
 
 function Face({ p, color }: { p: HighlightPlayer; color: string }) {
   return p.avatar?.startsWith("http") ? (
-    <Image src={p.avatar} alt="" width={24} height={24} unoptimized className="size-6 rounded-full object-cover ring-2 ring-card" />
+    <Image src={p.avatar} alt="" width={24} height={24} unoptimized className="size-6 rounded-full object-cover ring-2 ring-card outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
   ) : (
     <span className="grid size-6 place-items-center rounded-full text-[9px] font-semibold ring-2 ring-card" style={{ background: `${color}22`, color }}>
       {p.house ? "H" : p.name.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "?"}
@@ -23,7 +23,7 @@ const badgeLabel = (game: string) => (game === "hourly" ? "Hour" : gameLabel(gam
 function Tile({ icon, label, h, color, tone, meta }: { icon: React.ReactNode; label: string; h: Highlight | null; color: string; tone: string; meta: CasinoMeta }) {
   const href = h ? roundUrl(meta, h.game, h.roundId) : null;
   return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-card/60 p-4">
+    <div className="flex flex-col gap-2 rounded-lg bg-card/60 p-4 shadow-border">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className={tone}>{icon}</span>
         {label}
@@ -40,7 +40,7 @@ function Tile({ icon, label, h, color, tone, meta }: { icon: React.ReactNode; la
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {href ? (
               <a href={href} target="_blank" rel="noreferrer" title="Open on the site" className="hover:opacity-80">
-                <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}<ExternalLink className="ml-1 size-2.5" /></Badge>
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}<ExternalLink className="ml-1 size-2.5" strokeWidth={1.5} /></Badge>
               </a>
             ) : (
               <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}</Badge>
@@ -60,14 +60,14 @@ type TileSpec = { key: keyof Highlights; label: string; icon: React.ReactNode; t
 /** `pots` hides the tiles that only make sense with coinflip / jackpot detail (flip, jackpot, bot, streak, long shot). */
 export function HighlightsCard({ data, color, rangeLabel, pots, meta }: { data: Highlights; color: string; rangeLabel: string; pots: boolean; meta: CasinoMeta }) {
   const all: TileSpec[] = [
-    { key: "biggestFlip", label: "Biggest flip", icon: <Coins className="size-3.5" />, tone: "text-amber-400", pots: true },
-    { key: "biggestJackpot", label: "Biggest jackpot", icon: <Gem className="size-3.5" />, tone: "text-violet-400", pots: true },
-    { key: "biggestPlayerWin", label: "Biggest player win", icon: <Crown className="size-3.5" />, tone: "text-emerald-400" },
-    { key: "biggestSiteWin", label: "Biggest site win", icon: <Landmark className="size-3.5" />, tone: "text-rose-400" },
-    { key: "biggestBotLoss", label: "Biggest bot loss", icon: <TrendingDown className="size-3.5" />, tone: "text-orange-400", pots: true },
-    { key: "longestShot", label: "Longest shot", icon: <Clover className="size-3.5" />, tone: "text-lime-400", pots: true },
-    { key: "longestStreak", label: "Longest win streak", icon: <Flame className="size-3.5" />, tone: "text-red-400", pots: true },
-    { key: "peakHour", label: "Peak hour", icon: <Clock className="size-3.5" />, tone: "text-sky-400" },
+    { key: "biggestFlip", label: "Biggest flip", icon: <Coins className="size-3.5" strokeWidth={1.5} />, tone: "text-amber-400", pots: true },
+    { key: "biggestJackpot", label: "Biggest jackpot", icon: <Gem className="size-3.5" strokeWidth={1.5} />, tone: "text-violet-400", pots: true },
+    { key: "biggestPlayerWin", label: "Biggest player win", icon: <Crown className="size-3.5" strokeWidth={1.5} />, tone: "text-emerald-400" },
+    { key: "biggestSiteWin", label: "Biggest site win", icon: <Landmark className="size-3.5" strokeWidth={1.5} />, tone: "text-rose-400" },
+    { key: "biggestBotLoss", label: "Biggest bot loss", icon: <TrendingDown className="size-3.5" strokeWidth={1.5} />, tone: "text-orange-400", pots: true },
+    { key: "longestShot", label: "Longest shot", icon: <Clover className="size-3.5" strokeWidth={1.5} />, tone: "text-lime-400", pots: true },
+    { key: "longestStreak", label: "Longest win streak", icon: <Flame className="size-3.5" strokeWidth={1.5} />, tone: "text-red-400", pots: true },
+    { key: "peakHour", label: "Peak hour", icon: <Clock className="size-3.5" strokeWidth={1.5} />, tone: "text-sky-400" },
   ];
   const tiles = all.filter((t) => pots || !t.pots);
   return (

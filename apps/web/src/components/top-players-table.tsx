@@ -14,7 +14,7 @@ const MotionRow = motion.create(TableRow);
 const rowAnim = {
   initial: { opacity: 0, y: -8 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: 8 },
+  exit: { opacity: 0, y: 8, transition: { duration: 0.15, ease: "easeOut" as const } },
   transition: { type: "spring" as const, stiffness: 260, damping: 26 },
 };
 
@@ -44,7 +44,7 @@ export function TopPlayersTable({ players, color, limit = 10, rangeDays }: { pla
             <TableCell>
               <span className="flex items-center gap-2.5">
                 {p.avatar?.startsWith("http") ? (
-                  <Image src={p.avatar} alt="" width={28} height={28} unoptimized className="size-7 rounded-full object-cover" />
+                  <Image src={p.avatar} alt="" width={28} height={28} unoptimized className="size-7 rounded-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
                 ) : (
                   <span className="grid size-7 place-items-center rounded-full text-[10px] font-semibold" style={{ background: `${color}22`, color }}>{initials(p.handle)}</span>
                 )}
@@ -53,7 +53,7 @@ export function TopPlayersTable({ players, color, limit = 10, rangeDays }: { pla
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Badge variant="outline" className="h-4 cursor-default gap-1 border-orange-500/30 px-1.5 py-0 text-[10px] leading-none text-orange-400">
-                        <Flame className="size-2.5 shrink-0" />
+                        <Flame className="size-2.5 shrink-0" strokeWidth={1.5} />
                         <span className="leading-none">{p.activeDays}d</span>
                       </Badge>
                     </TooltipTrigger>

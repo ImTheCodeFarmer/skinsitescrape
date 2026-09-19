@@ -13,9 +13,9 @@ export function Sparkline({
 }) {
   const id = `spark-${color.replace("#", "")}`;
   return (
-    <div style={{ height }} className="w-full">
+    <div style={{ height }} className="pointer-events-none w-full [&_.recharts-wrapper]:outline-none [&_svg]:outline-none" aria-hidden>
       <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 160, height }}>
-        <AreaChart data={data.map((v, i) => ({ i, v }))} margin={{ top: 2, bottom: 2, left: 0, right: 0 }}>
+        <AreaChart data={data.map((v, i) => ({ i, v }))} margin={{ top: 2, bottom: 2, left: 0, right: 0 }} accessibilityLayer={false}>
           <defs>
             <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity={0.35} />
@@ -30,6 +30,7 @@ export function Sparkline({
             fill={`url(#${id})`}
             isAnimationActive={false}
             dot={false}
+            activeDot={false}
           />
         </AreaChart>
       </ResponsiveContainer>

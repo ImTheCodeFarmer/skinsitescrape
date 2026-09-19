@@ -75,7 +75,7 @@ function BreakdownCard({ title, badge, description, rows: rowsSpec, total, color
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full transition-[width] duration-500"
+                  className="h-full rounded-full transition-[width] duration-500 ease-out"
                   style={{ width: `${Math.max(2, (Math.abs(r.value) / scale) * 100)}%`, background: r.value >= 0 ? color : "rgb(251 113 133)" }}
                 />
               </div>

@@ -22,7 +22,7 @@ export function SteamSignInLink({ className, children, next }: { className?: str
     <a
       href={`/api/auth/steam?next=${encodeURIComponent(dest)}`}
       className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-md bg-[#171a21] px-3.5 text-sm font-medium text-white ring-1 ring-white/10 transition-colors hover:bg-[#1b2838]",
+        "inline-flex h-9 items-center gap-2 rounded-md bg-[#171a21] ps-3 pe-3.5 text-sm font-medium text-white ring-1 ring-white/10 transition-[background-color,scale] duration-150 ease-out hover:bg-[#1b2838] active:scale-[0.96]",
         className,
       )}
     >

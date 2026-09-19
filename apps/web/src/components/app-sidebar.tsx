@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
 import { LayoutGrid, ShieldCheck } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
-  SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+  SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
 } from "@/components/ui/sidebar";
 import { CasinoLogo } from "@/components/casino-logo";
 import { Sparkline } from "@/components/sparkline";
@@ -18,14 +19,17 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
   const pathname = usePathname();
   const params = useSearchParams();
   const qs = params.get("range") ? `?range=${params.get("range")}` : "";
+  const { setOpenMobile } = useSidebar();
+
+  // Close the mobile drawer after navigating from one of its links.
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
 
   return (
     <Sidebar collapsible="offcanvas" className="border-r border-sidebar-border">
       <SidebarHeader className="px-4 pt-4 pb-2">
-        <Link href={`/${qs}`} className="flex items-center gap-2.5">
-          <span className="grid size-8 place-items-center rounded-lg bg-foreground text-background">
-            <span className="text-sm font-bold tracking-tight">H</span>
-          </span>
+        <Link href={`/${qs}`} className="flex items-center">
           <div className="leading-tight">
             <div className="text-sm font-semibold">SkinWagerTracker</div>
             <div className="text-[11px] text-muted-foreground">skin casino tracker</div>
@@ -40,7 +44,7 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
               <SidebarMenuItem>
                 <SidebarMenuButton asChild isActive={pathname === "/"}>
                   <Link href={`/${qs}`}>
-                    <LayoutGrid className="size-4" />
+                    <LayoutGrid className="size-4" strokeWidth={1.5} />
                     <span>Overview</span>
                   </Link>
                 </SidebarMenuButton>
@@ -49,7 +53,7 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === "/admin"}>
                     <Link href="/admin">
-                      <ShieldCheck className="size-4" />
+                      <ShieldCheck className="size-4" strokeWidth={1.5} />
                       <span>Admin</span>
                     </Link>
                   </SidebarMenuButton>
@@ -74,7 +78,7 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
                     <SidebarMenuButton
                       asChild
                       isActive={active}
-                      className={cn("relative h-auto flex-col items-stretch gap-1.5 bg-transparent px-2.5 py-2 data-[active=true]:bg-transparent hover:bg-sidebar-accent/60", !tracked && "opacity-55")}
+                      className={cn("relative h-auto flex-col items-stretch gap-1.5 bg-transparent px-2.5 py-2 transition-[background-color] duration-150 ease-out data-[active=true]:bg-transparent hover:bg-sidebar-accent/60", !tracked && "opacity-55")}
                     >
                       <Link href={href}>
                         <span className="flex items-center gap-2.5">

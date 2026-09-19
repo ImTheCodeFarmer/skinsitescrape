@@ -26,7 +26,7 @@ export function KpiCard({
   const down = delta !== undefined && delta < -0.005;
   return (
     <Reveal className="h-full">
-      <Card className="relative h-full gap-1 overflow-hidden px-5 py-4 transition-colors hover:bg-card/80">
+      <Card className="relative h-full gap-1 overflow-hidden px-5 py-4">
         {accent ? (
           <span
             aria-hidden

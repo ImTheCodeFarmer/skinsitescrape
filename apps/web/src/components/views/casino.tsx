@@ -59,7 +59,7 @@ export function CasinoView(initial: CasinoData) {
   const worst = series.length ? [...series].sort((a, b) => a.net - b.net)[0] : null;
 
   return (
-    <Stagger className="mx-auto flex max-w-7xl flex-col gap-5" key={`${casino.slug}-${range}`}>
+    <Stagger className="mx-auto flex max-w-7xl flex-col gap-5" key={casino.slug}>
       <Reveal>
         <Card className="relative overflow-hidden">
           <span aria-hidden className="pointer-events-none absolute -top-24 -left-24 size-72 rounded-full blur-3xl" style={{ background: casino.color, opacity: 0.12 }} />
@@ -87,7 +87,7 @@ export function CasinoView(initial: CasinoData) {
               </div>
             ) : null}
             <Button asChild variant="outline" size="sm">
-              <a href={casino.url} target="_blank" rel="noreferrer">Visit <ExternalLink className="size-3.5" /></a>
+              <a href={casino.url} target="_blank" rel="noreferrer">Visit <ExternalLink data-icon="inline-end" className="size-3.5" /></a>
             </Button>
           </CardContent>
         </Card>

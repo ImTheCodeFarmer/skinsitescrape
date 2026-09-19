@@ -14,10 +14,10 @@ export function CasinoLogo({
   return (
     <span
       className={cn(
-        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/8 bg-white/[0.04]",
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10",
         className,
       )}
-      style={{ width: size, height: size, boxShadow: `inset 0 0 0 1px ${casino.color}22` }}
+      style={{ width: size, height: size, background: `color-mix(in oklch, ${casino.color} 9%, transparent)` }}
     >
       <Image
         src={casino.logo}

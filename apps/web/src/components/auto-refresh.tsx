@@ -23,10 +23,11 @@ export function AutoRefresh() {
       type="button"
       onClick={() => void refresh()}
       title="Updates every few seconds while this tab is visible"
-      className="hidden items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"
+      aria-busy={fetching}
+      className="hidden items-center gap-1.5 rounded-md py-1 ps-1.5 pe-2 text-[11px] text-muted-foreground transition-[color,background-color,scale] duration-150 ease-out hover:bg-muted hover:text-foreground active:scale-[0.96] sm:inline-flex"
     >
-      <RefreshCw className={cn("size-3", fetching && "animate-spin")} />
-      {ago == null ? "live" : ago < 2 ? "updated just now" : `updated ${ago}s ago`}
+      <RefreshCw className={cn("size-3", fetching && "animate-spin")} strokeWidth={1.5} />
+      {fetching ? "updating…" : ago == null ? "live" : ago < 2 ? "updated just now" : `updated ${ago}s ago`}
     </button>
   );
 }

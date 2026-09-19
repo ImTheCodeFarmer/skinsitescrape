@@ -8,6 +8,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { Reveal, Stagger } from "@/components/reveal";
 import { CasinoLogo } from "@/components/casino-logo";
 import { Sparkline } from "@/components/sparkline";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CompareChart } from "@/components/charts/compare-chart";
 import { NetChart } from "@/components/charts/net-chart";
 import { count, countShort, money, moneyShort, pct } from "@/lib/format";
@@ -39,7 +40,7 @@ export function OverviewView(initial: OverviewData) {
   const metaOf = (slug: string) => sites.find((x) => x.meta.slug === slug)?.meta;
 
   return (
-    <Stagger className="mx-auto flex max-w-7xl flex-col gap-5" key={range}>
+    <Stagger className="mx-auto flex max-w-7xl flex-col gap-5">
       <Reveal className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">All sites</h1>
@@ -93,24 +94,31 @@ export function OverviewView(initial: OverviewData) {
               <ul className="flex flex-col">
                 {ranked.map(({ meta: c, summary: s, spark }, i) => (
                   <li key={c.slug}>
-                    <Link href={`/casino/${c.slug}?range=${range}`} className="group grid grid-cols-[1.5rem_auto_1fr_auto] items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/60 sm:grid-cols-[1.5rem_auto_1fr_8rem_auto_auto]">
+                    <Link href={`/casino/${c.slug}?range=${range}`} className="group grid grid-cols-[1.5rem_auto_1fr_auto] items-center gap-3 rounded-sm px-3 py-2.5 transition-[background-color] duration-150 ease-out hover:bg-muted/60 sm:grid-cols-[1.5rem_auto_1fr_8rem_auto_auto]">
                       <span className="text-xs text-muted-foreground tabular-nums">{i + 1}</span>
                       <CasinoLogo casino={c} size={30} />
                       <span className="min-w-0">
                         <span className="flex items-center gap-1 text-sm font-medium">
                           {c.name}
-                          <ArrowUpRight className="size-3 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                          <ArrowUpRight className="size-3 scale-[0.25] text-muted-foreground opacity-0 blur-[4px] transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] group-hover:scale-100 group-hover:opacity-100 group-hover:blur-0" />
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">{c.tagline}</span>
                       </span>
                       <span className="hidden sm:block"><Sparkline data={spark} color={c.color} height={26} /></span>
-                      <span className="hidden text-right sm:block">
+                      <span className="text-right">
                         <span className="block text-sm font-medium tabular-nums">{moneyShort(s?.wagered ?? 0)}</span>
                         <span className="block text-[11px] text-muted-foreground">{countShort(s?.players ?? 0)} players</span>
                       </span>
-                      <span className={cn("min-w-14 text-right text-xs font-medium tabular-nums", (s?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400")}>
-                        {(s?.net ?? 0) >= 0 ? "+" : "−"}{moneyShort(Math.abs(s?.net ?? 0))}
-                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={cn("hidden min-w-14 cursor-default text-right text-xs font-medium tabular-nums sm:block", (s?.net ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                            {(s?.net ?? 0) >= 0 ? "+" : "−"}{moneyShort(Math.abs(s?.net ?? 0))}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          Site profit, {rangeLabel(range)}: wagered minus paid out. {(s?.net ?? 0) >= 0 ? "The house is ahead." : "Players are ahead."}
+                        </TooltipContent>
+                      </Tooltip>
                     </Link>
                   </li>
                 ))}
@@ -145,7 +153,7 @@ export function OverviewView(initial: OverviewData) {
                     <span className="text-xs text-muted-foreground tabular-nums">{moneyShort(g.wagered)} · {count(g.plays)} plays</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <span className="block h-full rounded-full bg-foreground/70" style={{ width: `${(g.wagered / gameMax) * 100}%` }} />
+                    <span className="block h-full rounded-full bg-foreground/70 transition-[width] duration-500 ease-out" style={{ width: `${(g.wagered / gameMax) * 100}%` }} />
                   </div>
                 </div>
               ))}
@@ -166,8 +174,8 @@ export function OverviewView(initial: OverviewData) {
             {players.map((p, i) => {
               const m = metaOf(p.site);
               return (
-                <motion.div key={`${p.site}-${p.id}`} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
-                <Link href={`/casino/${p.site}?range=${range}`} className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2.5 transition-colors hover:bg-muted/60">
+                <motion.div key={`${p.site}-${p.id}`} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15, ease: "easeOut" } }} transition={{ type: "spring", stiffness: 260, damping: 26 }}>
+                <Link href={`/casino/${p.site}?range=${range}`} className="flex items-center gap-3 rounded-lg px-3 py-2.5 shadow-border transition-[background-color,box-shadow] duration-150 ease-out hover:bg-muted/60 hover:shadow-border-hover">
                   <span className="text-xs text-muted-foreground tabular-nums">{i + 1}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{p.handle}</span>
