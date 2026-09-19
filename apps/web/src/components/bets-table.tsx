@@ -6,7 +6,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { gameLabel, roundUrl } from "@/lib/casinos";
-import { dateTime, moneyExact } from "@/lib/format";
+import { moneyExact } from "@/lib/format";
+import { TimeAgo } from "@/components/time-ago";
 import { cn } from "@/lib/utils";
 import type { BetRow, CasinoMeta } from "@/lib/types";
 
@@ -54,7 +55,7 @@ export function BetsTable({ bets, color, meta }: { bets: BetRow[]; color: string
             const net = b.payout - b.wagered;
             return (
               <MotionRow key={b.id} layout {...rowAnim}>
-                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{dateTime(b.settledAt)}</TableCell>
+                <TableCell className="whitespace-nowrap text-xs text-muted-foreground"><TimeAgo iso={b.settledAt} /></TableCell>
                 <TableCell><Who name={b.player.name} avatar={b.player.avatar} color={color} /></TableCell>
                 <TableCell>
                   {(() => {

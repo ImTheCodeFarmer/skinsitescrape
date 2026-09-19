@@ -5,7 +5,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { dateTime, money } from "@/lib/format";
+import { money } from "@/lib/format";
+import { TimeAgo } from "@/components/time-ago";
 import { cn } from "@/lib/utils";
 import type { CoinflipRound, JackpotRound } from "@/lib/types";
 
@@ -67,7 +68,7 @@ export function RoundsTable({ flips, pots, color }: { flips: CoinflipRound[]; po
               <AnimatePresence initial={false}>
               {flips.map((f) => (
                 <MotionRow key={f.id} layout {...rowAnim}>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{f.settledAt ? dateTime(f.settledAt) : dateTime(f.createdAt)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground"><TimeAgo iso={f.settledAt ?? f.createdAt} /></TableCell>
                   <TableCell><Who name={f.creator.name} avatar={f.creator.avatar} house={f.creator.house} won={f.winnerId === f.creator.id} color={color} /></TableCell>
                   <TableCell>{f.opponent ? <Who name={f.opponent.name} avatar={f.opponent.avatar} house={f.opponent.house} won={f.winnerId === f.opponent.id} color={color} /> : <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="text-right font-mono tabular-nums">{money(f.pot)}</TableCell>
@@ -99,7 +100,7 @@ export function RoundsTable({ flips, pots, color }: { flips: CoinflipRound[]; po
               {pots.map((j) => (
                 <MotionRow key={j.id} layout {...rowAnim}>
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    {j.settledAt ? dateTime(j.settledAt) : dateTime(j.createdAt)}
+                    <TimeAgo iso={j.settledAt ?? j.createdAt} />
                     {j.partial ? <Badge variant="outline" className="ml-2 px-1 py-0 text-[9px]">partial</Badge> : null}
                   </TableCell>
                   <TableCell>{j.winner ? <Who name={j.winner.name} avatar={j.winner.avatar} color={color} /> : <span className="text-muted-foreground">—</span>}</TableCell>

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AdminTabs } from "@/components/admin-tabs";
 import { AdminSites } from "@/components/views/admin-sites";
+import { TimeAgo } from "@/components/time-ago";
 import { ADMIN_TABS, type AdminTab } from "@/lib/admin-tabs";
 import { getSession, isAdmin } from "@/lib/auth";
 import { siteGames, statuses } from "@/lib/queries";
@@ -11,8 +12,6 @@ import { listUsers, type SiteUser } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin — SkinWagerTracker" };
-
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone: "UTC", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " UTC";
 
 /** Admin-only: connected Steam accounts and per-site info. Anyone else gets the 404 the page would show if it did not exist. */
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -79,8 +78,8 @@ function Users({ users }: { users: SiteUser[] }) {
                       {u.steamId}
                     </a>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{when(u.firstLogin)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{when(u.lastLogin)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground"><TimeAgo iso={u.firstLogin} /></TableCell>
+                  <TableCell className="text-sm text-muted-foreground"><TimeAgo iso={u.lastLogin} /></TableCell>
                   <TableCell className="text-right tabular-nums">{u.logins}</TableCell>
                 </TableRow>
               ))}

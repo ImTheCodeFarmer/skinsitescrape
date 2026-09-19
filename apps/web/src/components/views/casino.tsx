@@ -16,6 +16,7 @@ import { RoundsTable } from "@/components/rounds-table";
 import { BetsTable } from "@/components/bets-table";
 import { GameNetCard, ProfitBreakdownCard } from "@/components/profit-breakdown";
 import { HighlightsCard } from "@/components/highlights";
+import { TimeAgo } from "@/components/time-ago";
 import { useLiveCasino } from "@/lib/live-client";
 import { count, countShort, money, moneyShort } from "@/lib/format";
 import type { BetRow, CasinoMeta, CoinflipRound, GameStat, Highlights, JackpotRound, PlayerStat, Point, ProfitBreakdown, Range, SiteStatus, Summary } from "@/lib/types";
@@ -43,14 +44,6 @@ export type CasinoData = {
 
 const RANGE_LABEL: Record<Range, string> = { 1: "last 24 hours", 7: "last 7 days", 30: "last 30 days", 90: "last 90 days" };
 
-function ago(iso: string | null) {
-  if (!iso) return "never";
-  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 90) return `${s}s ago`;
-  if (s < 5400) return `${Math.round(s / 60)}m ago`;
-  return `${Math.round(s / 3600)}h ago`;
-}
-
 export function CasinoView(initial: CasinoData) {
   const { meta: casino, range, tracked, summary: s, series, players, games, status, flips, pots, bets, breakdown, records } = useLiveCasino(initial);
   const hourly = range === 1;
@@ -72,7 +65,7 @@ export function CasinoView(initial: CasinoData) {
                 <Badge variant="outline" className="font-normal">{casino.currency}</Badge>
                 {status ? (
                   <Badge variant="outline" className={status.connected ? "border-emerald-500/30 text-emerald-400" : "border-rose-500/30 text-rose-400"}>
-                    {status.connected ? `live · last event ${ago(status.lastEventAt)}` : `offline · last event ${ago(status.lastEventAt)}`}
+                    {status.connected ? "live" : "offline"} · last event {status.lastEventAt ? <TimeAgo iso={status.lastEventAt} /> : "never"}
                   </Badge>
                 ) : null}
               </div>

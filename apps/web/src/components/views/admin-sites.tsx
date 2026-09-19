@@ -2,13 +2,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CasinoLogo } from "@/components/casino-logo";
+import { TimeAgo } from "@/components/time-ago";
 import { CASINOS } from "@/lib/casinos";
 import type { CasinoMeta, SiteGameInfo, SiteStatus } from "@/lib/types";
 
 const rate = (v: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(v);
 const count = (v: number) => new Intl.NumberFormat("en-US").format(v);
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-US", { timeZone: "UTC", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " UTC" : "never");
 
 function Collector({ status }: { status: SiteStatus | null }) {
   if (!status) return <Badge variant="outline" className="text-muted-foreground">No collector</Badge>;
@@ -53,8 +53,8 @@ function SiteCard({ meta, status, games }: { meta: CasinoMeta; status: SiteStatu
             <a href={meta.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground">{meta.url.replace(/^https?:\/\//, "")}</a>
           </Field>
           <Field label="Founded">{meta.founded}</Field>
-          <Field label="Last event">{when(status?.lastEventAt ?? null)}</Field>
-          <Field label="Last connect">{when(status?.lastConnectAt ?? null)}</Field>
+          <Field label="Last event">{status?.lastEventAt ? <TimeAgo iso={status.lastEventAt} /> : "never"}</Field>
+          <Field label="Last connect">{status?.lastConnectAt ? <TimeAgo iso={status.lastConnectAt} /> : "never"}</Field>
           <Field label="Reconnects">{status ? count(status.reconnects) : "—"}</Field>
           <Field label="Pot tables">{meta.pots ? "Coinflip and jackpot detail" : "No"}</Field>
         </dl>

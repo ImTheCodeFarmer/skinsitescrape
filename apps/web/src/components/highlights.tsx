@@ -5,7 +5,8 @@ import { Clock, Clover, Coins, Crown, ExternalLink, Flame, Gem, Landmark, Trendi
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameLabel, roundUrl } from "@/lib/casinos";
-import { count, dateTime, money } from "@/lib/format";
+import { count, money } from "@/lib/format";
+import { TimeAgo } from "@/components/time-ago";
 import type { CasinoMeta, Highlight, HighlightPlayer, Highlights } from "@/lib/types";
 
 function Face({ p, color }: { p: HighlightPlayer; color: string }) {
@@ -45,7 +46,7 @@ function Tile({ icon, label, h, color, tone, meta }: { icon: React.ReactNode; la
             ) : (
               <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{badgeLabel(h.game)}</Badge>
             )}
-            {dateTime(h.at)}
+            <TimeAgo iso={h.at} />
           </div>
         </>
       ) : (
