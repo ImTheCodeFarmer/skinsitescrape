@@ -313,6 +313,43 @@ private games whose only public trace is the chat's big-win messages;
 esports only pushes match odds; Plinko's `createPlinkoBet` subscription
 closes the socket with 4401 for a guest, even with the site's own document.
 
+## Splits.gg
+
+Socket.IO at `wss://splits.gg/socket.io/`, no auth needed (the browser sends
+a session id in the connect payload; guests get everything below without
+one). Behind Cloudflare; `wstap` connects without a proxy as of 2026-09-19.
+
+One feed covers the whole site. `newDrop` is the site's live bet ticker,
+pushed to every socket with no subscription: each message carries one or
+more settled bets in `latestDrops` (repeated in `highrollerDrops` and
+`luckyDrops` when they qualify) with the game name, the player, the stake,
+the payout and the result, losses included. Over two runs on 2026-09-19
+every id in the sequence arrived and the mines feed (`mines:pushHistory`)
+matched the ticker one for one, so it is treated as complete. `setDrops` is
+the same shape sent once on connect with recent history.
+
+So every mode is tracked from this one feed, including the private ones:
+battles (case and skin), coinflip, bust (the site's blackjack; side bets
+arrive as their own drops and land under `bust` too), upgrader, wheel,
+mines, cases, targets, towers, keno and plinko. Multi-player rounds share a
+`gameId`, kept as `round_id`; the drop id is the bet's own id. Game names
+are matched by pattern (`GAMES` in `adapters/splits`); an unseen name is
+stored under its own slug with a warning, and `reparse splits` re-derives
+everything once the map is extended.
+
+Amounts are integer cents of gems at **$1 per gem**: every balance and bet
+in the client is `amount / 100`, and a USD deposit buys the same number of
+gems (crypto deposits carry a bonus, so those gems cost less). Only
+`balanceMode: "gem"` has been seen; other modes are raw only. Players are
+the site's numeric user ids. A player who plays anonymously still comes
+through with their id; the name and avatar are stored hidden, as the site
+shows them.
+
+Raw only: `coinflip:*` and `WOF*` (round detail the stats do not need),
+`mines:pushHistory`, `cases:community:open`. Chat, presence, rain,
+leaderboards, emoji tallies and the blackjack table's card-by-card stream
+are dropped.
+
 ## Sign in with Steam
 
 The 24 hour and 7 day views are public and 7 days is the default. The 30
