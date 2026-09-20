@@ -207,7 +207,13 @@ export type LiveOverview = {
 
 // ---------------------------------------------------------------- player profiles
 
-export type LinkEvidence = { steam: boolean; avatar: boolean; avatarOwners: number; name: boolean; sharedDays: number; daysA: number; daysB: number };
+export type LinkEvidence = {
+  steam: boolean; avatar: boolean; avatarOwners: number; name: boolean; sharedDays: number; daysA: number; daysB: number;
+  /** Once scored as the same person, the pair is kept by user id alone: renames and new pictures no longer affect it. */
+  permanent?: boolean;
+  confirmedAt?: string;
+  source?: "auto" | "admin";
+};
 
 /** One account on one site. */
 export type Account = { site: string; id: string; handle: string; avatar: string | null; firstSeen: string | null; lastSeen: string | null };

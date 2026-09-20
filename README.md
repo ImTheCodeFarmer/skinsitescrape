@@ -378,6 +378,16 @@ refresh by hand).
 | Same Steam profile picture | 0.9, or 0.75 when a few other accounts share it | |
 | Same display name only | 0.35 to 0.45 by length, +0.2 when both were active on 3 or more of the same days, −0.15 when they never were despite regular play on both | Names are normalized to lower-case letters and digits, must be five or more characters, and must be rare (at most four accounts). |
 
+**Permanent links.** A pair scored as the same person (0.95 or higher)
+is also written to `player_links_confirmed`, keyed by the two sites' user
+ids only. Every later run merges those back into `player_links` at no less
+than their confirmed score, so a rename or a new profile picture on one
+site can lower a freshly computed score but never removes a link that was
+once certain. The card shows a lock on such links and the tooltip gives the
+confirmation date. Deleting a row from `player_links_confirmed` drops the
+link on the next run; inserting one with `source = 'admin'` pins a link by
+hand (migration 0012).
+
 The page labels scores as **Same person** (95%+), **Very likely** (70%+),
 **Possibly** (40%+) and **Weak match**. Links at 70% or higher count toward
 the totals and get a tab; weaker ones are listed with their confidence but

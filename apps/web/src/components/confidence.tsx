@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { LinkEvidence } from "@/lib/types";
@@ -12,6 +13,7 @@ export function confidenceLabel(score: number) {
 
 export function evidenceLines(e: LinkEvidence, hops: number) {
   const lines: string[] = [];
+  if (e.permanent) lines.push(`Permanent link${e.confirmedAt ? `, confirmed ${new Date(e.confirmedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}${e.source === "admin" ? " by an admin" : ""} on the evidence below. Kept by user id from then on, so a new name or picture cannot break it.`);
   if (e.steam) lines.push("Same Steam id on both sites");
   if (e.avatar) lines.push(e.avatarOwners <= 2 ? "Same Steam profile picture" : `Same profile picture, shared by ${e.avatarOwners} accounts`);
   if (e.name) lines.push("Same display name");
@@ -28,7 +30,10 @@ export function Confidence({ score, evidence, hops, className }: { score: number
       <TooltipTrigger asChild>
         <span className={cn("inline-flex cursor-default flex-col gap-1", className)}>
           <span className="flex items-baseline justify-between gap-3 text-xs">
-            <span className={cn("font-medium", c.tone)}>{c.label}</span>
+            <span className={cn("inline-flex items-center gap-1 font-medium", c.tone)}>
+              {evidence.permanent ? <Lock className="size-3 shrink-0" strokeWidth={2} aria-label="Permanent link" /> : null}
+              {c.label}
+            </span>
             <span className="text-muted-foreground tabular-nums">{Math.round(score * 100)}%</span>
           </span>
           <span className="block h-1.5 w-full overflow-hidden rounded-full bg-muted" aria-hidden>
