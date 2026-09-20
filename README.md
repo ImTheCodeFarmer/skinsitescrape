@@ -438,6 +438,35 @@ rustbattle` re-derives everything after a fix.
 are private games; their pages open no socket channel and nothing about
 them is broadcast.
 
+## Telegram alerts
+
+`/alerts` (approved accounts only) walks a user through creating their own
+bot with @BotFather, connecting a chat, and writing alert rules. Nothing is
+shared between users: each account's alerts go out through that account's
+bot.
+
+1. **Token.** The user pastes the token BotFather gave them. The web app
+   checks it with `getMe`, then stores it in `alert_bots` encrypted with
+   AES-256-GCM under `ALERTS_SECRET` (`packages/db/src/secrets.ts`; falls
+   back to `SESSION_SECRET`, then a key derived from `DATABASE_URL`, so the
+   web app and the collector agree without extra setup).
+2. **Chat.** Bots cannot message a user first, so the user opens the bot and
+   presses Start; "Find my chat" reads the bot's `getUpdates` queue, keeps
+   the newest chat id (a group works the same way once the bot is in it),
+   and sends a hello. "Send a test" checks the path end to end.
+3. **Rules** (`alert_rules`): *big bet* (any bet at or above a size), *player
+   bet* (one account, optionally above a size; a profile's "Alert me" button
+   prefills it) and *big win* (net win at or above a size), each optionally
+   limited to a site and a game, with an optional quiet time between sends.
+   Up to 50 per account.
+
+The collector evaluates every settled bet it writes against the enabled
+rules (`core/alerts.ts`, hooked into the sink; rules reload every 30 s) and
+sends through the owner's bot with the site, game, player, stake, result
+and, when `PUBLIC_WEB_URL` is set, a link to the profile. A row per (rule,
+bet) in `alert_deliveries` keeps re-flushed bets from sending twice; a
+failed send is recorded on the bot as `last_error` and shown on the page.
+
 ## Sign in with Steam
 
 The 24 hour and 7 day views are public and 7 days is the default. The 30

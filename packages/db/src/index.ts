@@ -3,6 +3,7 @@ import postgres from "postgres";
 import * as schema from "./schema.js";
 
 export * from "./schema.js";
+export { encryptSecret, decryptSecret } from "./secrets.js";
 export { sql, eq, and, desc, gte, lt } from "drizzle-orm";
 
 export type Db = ReturnType<typeof createDb>["db"];

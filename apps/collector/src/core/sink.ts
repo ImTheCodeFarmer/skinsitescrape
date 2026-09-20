@@ -100,7 +100,10 @@ export class Sink {
   /** Last failed statement, for callers that want to stop instead of carrying on. */
   lastError: { table: string; err: unknown } | null = null;
 
-  constructor(private db: Db, opts: { recordRaw?: boolean; dryRun?: boolean } = {}) {
+  /** Called with each batch of bets after it is written; the alerts matcher hangs off this. */
+  private onBets?: (bets: BetRow[]) => void;
+  constructor(private db: Db, opts: { recordRaw?: boolean; dryRun?: boolean; onBets?: (bets: BetRow[]) => void } = {}) {
+    this.onBets = opts.onBets;
     this.recordRaw = opts.recordRaw ?? true;
     this.dryRun = opts.dryRun ?? false;
     this.timer = setInterval(() => void this.flush(), FLUSH_MS);
@@ -302,6 +305,13 @@ export class Sink {
           settled_at = COALESCE(EXCLUDED.settled_at, bets.settled_at),
           is_house   = EXCLUDED.is_house,
           meta       = COALESCE(EXCLUDED.meta, bets.meta)`));
+      if (this.onBets) {
+        try {
+          this.onBets(bets);
+        } catch (err) {
+          log.warn({ err }, "onBets hook threw");
+        }
+      }
     }
 
     const n = raw.length + players.length + bets.length + coinflips.length + jackpots.length + entries.length;

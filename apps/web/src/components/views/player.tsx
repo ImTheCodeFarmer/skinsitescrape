@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, Link2 } from "lucide-react";
+import { Bell, ExternalLink, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BetsTable } from "@/components/bets-table";
@@ -107,6 +108,11 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
                 {anchor.lastSeen ? <> · last seen <TimeAgo iso={anchor.lastSeen} /></> : null}
               </p>
             </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/alerts?site=${anchor.site}&player=${encodeURIComponent(anchor.id)}&name=${encodeURIComponent(anchor.handle)}`}>
+                <Bell data-icon="inline-start" className="size-3.5" strokeWidth={2} />Alert me
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       </Reveal>
