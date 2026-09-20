@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useActionState, useTransition } from "react";
-import { AlertTriangle, Bell, Check, ExternalLink, FlaskConical, Pause, Play, Plus, Send, Settings2, Trash2, TrendingUp, Trophy, UserRound, X } from "lucide-react";
+import { AlertTriangle, Bell, Check, ExternalLink, FlaskConical, Pause, Pencil, Play, Plus, Send, Settings2, Trash2, TrendingUp, Trophy, UserRound, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { TimeAgo } from "@/components/time-ago";
 import { PlayerFinder } from "@/components/player-finder";
 import { CASINOS, GAME_LABELS } from "@/lib/casinos";
 import { describeRule, KIND_LABELS, type AlertBot, type AlertRule, type RuleKind } from "@/lib/alerts-shared";
-import { connectChatAction, createRuleAction, deleteRuleAction, removeBotAction, saveTokenAction, sendTestAction, testRuleAction, toggleRuleAction, type ActionState } from "@/app/alerts/actions";
+import { connectChatAction, createRuleAction, deleteRuleAction, removeBotAction, saveTokenAction, sendTestAction, testRuleAction, toggleRuleAction, updateRuleAction, type ActionState } from "@/app/alerts/actions";
 import { cn } from "@/lib/utils";
 
 /** Native select, styled to sit beside <Input>. */
@@ -167,16 +167,21 @@ function ChatStep({ bot }: { bot: AlertBot | null }) {
 }
 
 // ---------------------------------------------------------------- step 3: rules
-function RuleForm({ prefill }: { prefill: { site: string | null; playerId: string | null; playerName: string | null } }) {
-  const [state, act, pending] = useActionState(createRuleAction, null);
-  const [kind, setKind] = React.useState<RuleKind>(prefill.playerId ? "player_bet" : "big_bet");
-  const [site, setSite] = React.useState(prefill.site ?? "");
-  const [playerId, setPlayerId] = React.useState(prefill.playerId ?? "");
-  const [name, setName] = React.useState(prefill.playerName ? `${prefill.playerName} bets` : "");
-  const [picked, setPicked] = React.useState<string | null>(prefill.playerName ?? null);
+/** Add a new alert, or, given `rule`, edit that one in place. */
+function RuleForm({ prefill, rule, onDone }: { prefill: { site: string | null; playerId: string | null; playerName: string | null }; rule?: AlertRule; onDone?: () => void }) {
+  const [state, act, pending] = useActionState(rule ? updateRuleAction : createRuleAction, null);
+  const [kind, setKind] = React.useState<RuleKind>(rule?.kind ?? (prefill.playerId ? "player_bet" : "big_bet"));
+  const [site, setSite] = React.useState(rule?.site ?? prefill.site ?? "");
+  const [playerId, setPlayerId] = React.useState(rule?.playerId ?? prefill.playerId ?? "");
+  const [name, setName] = React.useState(rule?.name ?? (prefill.playerName ? `${prefill.playerName} bets` : ""));
+  const [picked, setPicked] = React.useState<string | null>(rule?.playerName ?? prefill.playerName ?? null);
+  React.useEffect(() => {
+    if (state?.ok && rule) onDone?.();
+  }, [state, rule, onDone]);
   const games = Object.entries(GAME_LABELS).sort((a, b) => a[1].localeCompare(b[1]));
   return (
     <form action={act} className="flex flex-col gap-4">
+      {rule ? <input type="hidden" name="id" value={rule.id} /> : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name" hint="Shown at the top of each message.">
           <Input name="name" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Whales on Rustypot" />
@@ -193,7 +198,7 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
           </Select>
         </Field>
         <Field label="Game (optional)">
-          <Select name="game" defaultValue="">
+          <Select name="game" defaultValue={rule?.game ?? ""}>
             <option value="">Any game</option>
             {games.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
@@ -211,20 +216,23 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
         ) : null}
         {kind === "big_win" ? (
           <Field label="Minimum net win" hint="Payout minus stake, in dollars.">
-            <Input name="minNetWin" inputMode="decimal" required placeholder="1,000" className="tabular-nums" />
+            <Input name="minNetWin" inputMode="decimal" required placeholder="1,000" className="tabular-nums" defaultValue={rule?.minNetWin ?? ""} />
           </Field>
         ) : (
           <Field label={kind === "player_bet" ? "Minimum bet (optional)" : "Minimum bet"} hint="In dollars.">
-            <Input name="minWagered" inputMode="decimal" required={kind === "big_bet"} placeholder="500" className="tabular-nums" />
+            <Input name="minWagered" inputMode="decimal" required={kind === "big_bet"} placeholder="500" className="tabular-nums" defaultValue={rule?.minWagered ?? ""} />
           </Field>
         )}
         <Field label="Quiet time (minutes)" hint="After a message, wait this long before this alert can send again. 0 sends every match.">
-          <Input name="cooldownMinutes" inputMode="numeric" defaultValue="0" className="tabular-nums" />
+          <Input name="cooldownMinutes" inputMode="numeric" defaultValue={rule ? String(Math.round(rule.cooldownSeconds / 60)) : "0"} className="tabular-nums" />
         </Field>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Outcome state={state} />
-        <Button type="submit" disabled={pending} static className="ml-auto">{pending ? "Adding…" : "Add alert"}</Button>
+        <span className="ml-auto flex items-center gap-2">
+          {rule ? <Button type="button" variant="ghost" onClick={onDone}>Cancel</Button> : null}
+          <Button type="submit" disabled={pending} static>{pending ? (rule ? "Saving…" : "Adding…") : rule ? "Save changes" : "Add alert"}</Button>
+        </span>
       </div>
     </form>
   );
@@ -233,13 +241,13 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
 const KIND_ICON: Record<RuleKind, React.ComponentType<React.SVGProps<SVGSVGElement> & { strokeWidth?: number }>> = { big_bet: TrendingUp, player_bet: UserRound, big_win: Trophy };
 const KIND_TONE: Record<RuleKind, string> = { big_bet: "bg-sky-500/15 text-sky-400", player_bet: "bg-violet-500/15 text-violet-400", big_win: "bg-amber-500/15 text-amber-400" };
 
-function RuleCard({ r }: { r: AlertRule }) {
+function RuleCard({ r, onEdit, editing }: { r: AlertRule; onEdit: () => void; editing: boolean }) {
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = React.useState(false);
   const [test, setTest] = React.useState<ActionState>(null);
   const Icon = KIND_ICON[r.kind];
   return (
-    <li className={cn("flex flex-col gap-3 rounded-xl bg-card p-4 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover", !r.enabled && "opacity-70")}>
+    <li className={cn("flex flex-col gap-3 rounded-xl bg-card p-4 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover", !r.enabled && "opacity-70", editing && "ring-2 ring-foreground/25")}>
       <div className="flex items-start gap-3">
         <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", r.enabled ? KIND_TONE[r.kind] : "bg-muted text-muted-foreground")}>
           <Icon className="size-4" strokeWidth={2} />
@@ -276,6 +284,9 @@ function RuleCard({ r }: { r: AlertRule }) {
               <Button size="xs" variant="ghost" disabled={pending} title="Send a sample of this alert to your chat" onClick={() => start(async () => setTest(await testRuleAction(r.id)))}>
                 <FlaskConical data-icon="inline-start" className="size-3" strokeWidth={1.5} />Test
               </Button>
+              <Button size="xs" variant="ghost" disabled={pending} onClick={onEdit} aria-pressed={editing}>
+                <Pencil data-icon="inline-start" className="size-3" strokeWidth={1.5} />Edit
+              </Button>
               <Button size="icon-xs" variant="ghost" aria-label={`Delete ${r.name}`} title="Delete" onClick={() => setConfirming(true)}><Trash2 className="size-3.5" strokeWidth={1.5} /></Button>
             </>
           )}
@@ -289,6 +300,9 @@ function RuleCard({ r }: { r: AlertRule }) {
 function AlertsTab({ bot, rules, prefill, onSettings }: { bot: AlertBot | null; rules: AlertRule[]; prefill: Prefill; onSettings: () => void }) {
   const ready = Boolean(bot?.chatId);
   const [adding, setAdding] = React.useState(Boolean(prefill.playerId) || rules.length === 0);
+  const [editingId, setEditingId] = React.useState<number | null>(null);
+  const editing = rules.find((r) => r.id === editingId) ?? null;
+  const stopEditing = React.useCallback(() => setEditingId(null), []);
   const active = rules.filter((r) => r.enabled).length;
   if (!ready) {
     return (
@@ -310,11 +324,20 @@ function AlertsTab({ bot, rules, prefill, onSettings }: { bot: AlertBot | null; 
         <p className="text-sm text-muted-foreground">
           {rules.length === 0 ? "No alerts yet." : <>{rules.length} {rules.length === 1 ? "alert" : "alerts"}, {active} active.</>} Delivered to <span className="text-foreground">{bot!.chatTitle}</span> via @{bot!.botUsername}.
         </p>
-        <Button variant={adding ? "outline" : "default"} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
+        <Button variant={adding ? "outline" : "default"} onClick={() => { setAdding((v) => !v); setEditingId(null); }} aria-expanded={adding}>
           {adding ? <><X data-icon="inline-start" className="size-4" strokeWidth={2} />Close</> : <><Plus data-icon="inline-start" className="size-4" strokeWidth={2} />New alert</>}
         </Button>
       </div>
-      {adding ? (
+      {editing ? (
+        <Card className="gap-0 p-0 ring-2 ring-foreground/25">
+          <CardHeader className="pt-4 pb-3">
+            <CardTitle>Edit alert</CardTitle>
+            <CardDescription>Changing the condition applies to the next matching bet; the send count is kept.</CardDescription>
+          </CardHeader>
+          <CardContent className="pb-4"><RuleForm key={editing.id} prefill={prefill} rule={editing} onDone={stopEditing} /></CardContent>
+        </Card>
+      ) : null}
+      {adding && !editing ? (
         <Card className="gap-0 p-0">
           <CardHeader className="pt-4 pb-3">
             <CardTitle>New alert</CardTitle>
@@ -324,7 +347,7 @@ function AlertsTab({ bot, rules, prefill, onSettings }: { bot: AlertBot | null; 
         </Card>
       ) : null}
       {rules.length ? (
-        <ul className="grid gap-3 md:grid-cols-2">{rules.map((r) => <RuleCard key={r.id} r={r} />)}</ul>
+        <ul className="grid gap-3 md:grid-cols-2">{rules.map((r) => <RuleCard key={r.id} r={r} editing={r.id === editingId} onEdit={() => { setEditingId(r.id === editingId ? null : r.id); setAdding(false); }} />)}</ul>
       ) : !adding ? (
         <p className="text-sm text-muted-foreground">Add your first alert with the button above.</p>
       ) : null}

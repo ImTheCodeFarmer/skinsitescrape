@@ -38,7 +38,7 @@ export function SteamPanel({ site, id, steamId, steam }: { site: string; id: str
               <div>
                 <h2 className="text-base font-medium">No Steam data yet</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  This account is keyed by Steam id <span className="font-mono text-xs">{steamId}</span>. The collector refreshes profiles on a schedule; fetch it now to see the persona, account age, bans, friends and past names.
+                  We know this player&apos;s Steam id, <span className="font-mono text-xs">{steamId}</span>. The collector refreshes profiles on a schedule; fetch it now to see the persona, account age, bans, friends and past names.
                 </p>
               </div>
               <Button disabled={pending} static onClick={() => start(async () => { setError(null); const r = await fetchSteamAction(site, id, steamId); if (!r?.ok) setError(r?.error ?? "Steam did not answer"); })}>

@@ -753,7 +753,11 @@ export async function playerProfile(site: string, id: string, range: Range): Pro
   if (!anchor) return null;
   const linked = await linkedAccounts(site, id);
   const countedAccounts: Account[] = [anchor, ...linked.filter((l) => l.score >= COUNTED_AT)];
-  const steamIds = [...new Set(countedAccounts.map((a) => a.id).filter((x) => /^7656119[0-9]{10}$/.test(x)))];
+  const keyed = countedAccounts.map((a) => a.id).filter((x) => /^7656119[0-9]{10}$/.test(x));
+  const learned = keyed.length
+    ? []
+    : await rows(sql`SELECT steam_id FROM player_identities pi WHERE (${sql.join(countedAccounts.map((a) => sql`(pi.site = ${a.site} AND pi.external_id = ${a.id})`), sql` OR `)}) ORDER BY last_seen DESC LIMIT 1`);
+  const steamIds = [...new Set([...keyed, ...learned.map((x) => String(x.steam_id))])];
   const steam = steamIds.length ? await steamProfile(steamIds[0]) : null;
   const [totalsBy, series, games, recent, ...perAccount] = await Promise.all([
     accountTotals(countedAccounts, range),

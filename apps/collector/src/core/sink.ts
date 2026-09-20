@@ -19,6 +19,7 @@ export type PlayerRow = {
   isHouse?: boolean;
   seenAt: Date;
 };
+export type IdentityRow = { site: string; externalId: string; steamId: string; source: string; seenAt: Date };
 export type BetRow = {
   site: string;
   game: string;
@@ -85,6 +86,7 @@ export class Sink {
   private raw: RawEventRow[] = [];
   private players = new Map<string, PlayerRow>();
   private bets = new Map<string, BetRow>();
+  private identities = new Map<string, IdentityRow>();
   private coinflips = new Map<string, CoinflipRow>();
   private jackpots = new Map<string, JackpotRow>();
   private jackpotEntries = new Map<string, JackpotEntryRow>();
@@ -119,6 +121,10 @@ export class Sink {
     const k = `${row.site}|${row.externalId}`;
     const prev = this.players.get(k);
     this.players.set(k, { ...prev, ...row, isHouse: row.isHouse || prev?.isHouse || false });
+  }
+  identity(row: IdentityRow) {
+    if (!/^7656119[0-9]{10}$/.test(row.steamId)) return;
+    this.identities.set(`${row.site}|${row.externalId}|${row.steamId}`, row);
   }
   bet(row: BetRow) {
     this.bets.set(`${row.site}|${row.game}|${row.externalId}`, row);
@@ -175,6 +181,8 @@ export class Sink {
     this.players.clear();
     const bets = [...this.bets.values()];
     this.bets.clear();
+    const identities = [...this.identities.values()];
+    this.identities.clear();
     const coinflips = [...this.coinflips.values()];
     this.coinflips.clear();
     const jackpots = [...this.jackpots.values()];
@@ -210,6 +218,14 @@ export class Sink {
           is_house     = players.is_house OR EXCLUDED.is_house,
           first_seen   = LEAST(players.first_seen, EXCLUDED.first_seen),
           last_seen    = GREATEST(players.last_seen, EXCLUDED.last_seen)`));
+    }
+    if (identities.length) {
+      await this.write("player_identities", identities, () => this.db.execute(sql`
+        INSERT INTO player_identities (site, external_id, steam_id, source, first_seen, last_seen)
+        SELECT site, external_id, steam_id, source, seen_at, seen_at FROM json_to_recordset(${j(
+          identities.map((i) => ({ site: i.site, external_id: i.externalId, steam_id: i.steamId, source: i.source, seen_at: i.seenAt })),
+        )}::json) AS x(site text, external_id text, steam_id text, source text, seen_at timestamptz)
+        ON CONFLICT (site, external_id, steam_id) DO UPDATE SET last_seen = GREATEST(player_identities.last_seen, EXCLUDED.last_seen)`));
     }
     if (coinflips.length) {
       await this.write("coinflips", coinflips, () => this.db.execute(sql`

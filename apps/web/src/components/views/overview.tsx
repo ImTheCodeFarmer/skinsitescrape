@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import * as React from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowUpRight, Link2 } from "lucide-react";
+import { ArrowDown, ArrowUpRight, Link2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/kpi-card";
 import { Reveal, Stagger } from "@/components/reveal";
@@ -33,10 +34,39 @@ export type OverviewData = {
 
 const rangeLabel = (r: Range) => (r === 1 ? "last 24 hours" : `last ${r} days`);
 
+type SortKey = "wagered" | "net" | "rtp";
+/** Leaderboard columns. Each sorts descending; a site with no data sorts last. */
+const SORTS: Record<SortKey, { label: string; title: string; value: (s: Summary | null | undefined) => number }> = {
+  wagered: { label: "Wagered", title: "Total wagered by players", value: (s) => s?.wagered ?? -Infinity },
+  net: { label: "Profit", title: "Site profit: wagered minus paid out", value: (s) => s?.net ?? -Infinity },
+  rtp: { label: "Realized RTP", title: "Paid out as a share of wagered, over the range", value: (s) => (s?.wagered ? s.rtp : -Infinity) },
+};
+
+function SortHeader({ k, sort, onSort, className }: { k: SortKey; sort: SortKey; onSort: (k: SortKey) => void; className?: string }) {
+  const active = sort === k;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(k)}
+      title={SORTS[k].title}
+      aria-pressed={active}
+      className={cn(
+        "inline-flex w-full items-center justify-end gap-1 rounded-sm text-[11px] font-medium uppercase tracking-wide transition-[color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+        className,
+      )}
+    >
+      {SORTS[k].label}
+      <ArrowDown className={cn("size-3 shrink-0 transition-[opacity] duration-150 ease-out", active ? "opacity-100" : "opacity-0")} strokeWidth={2} aria-hidden />
+    </button>
+  );
+}
+
 export function OverviewView(initial: OverviewData) {
   const { range, sites, totals: s, agg, series, games, players } = useLiveOverview(initial);
   const tracked = sites.filter((x) => x.tracked);
-  const ranked = [...tracked].sort((a, b) => (b.summary?.wagered ?? 0) - (a.summary?.wagered ?? 0));
+  const [sort, setSort] = React.useState<SortKey>("wagered");
+  const ranked = [...tracked].sort((a, b) => SORTS[sort].value(b.summary) - SORTS[sort].value(a.summary));
   const gameMax = games[0]?.wagered ?? 1;
   const metaOf = (slug: string) => sites.find((x) => x.meta.slug === slug)?.meta;
 
@@ -92,10 +122,19 @@ export function OverviewView(initial: OverviewData) {
               <CardDescription>Sites ranked by wager volume</CardDescription>
             </CardHeader>
             <CardContent className="px-2">
+              <div role="row" className="grid grid-cols-[1.5rem_auto_1fr_5.5rem] items-center gap-3 px-3 pb-1.5 sm:grid-cols-[1.5rem_auto_1fr_8rem_5.5rem_4.5rem_6rem]">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">#</span>
+                <span aria-hidden className="w-[30px]" />
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Site</span>
+                <span aria-hidden className="hidden sm:block" />
+                <SortHeader k="wagered" sort={sort} onSort={setSort} />
+                <SortHeader k="net" sort={sort} onSort={setSort} className="hidden sm:inline-flex" />
+                <SortHeader k="rtp" sort={sort} onSort={setSort} className="hidden sm:inline-flex" />
+              </div>
               <ul className="flex flex-col">
                 {ranked.map(({ meta: c, summary: s, spark }, i) => (
                   <li key={c.slug}>
-                    <Link href={`/casino/${c.slug}?range=${range}`} className="group grid grid-cols-[1.5rem_auto_1fr_auto] items-center gap-3 rounded-sm px-3 py-2.5 transition-[background-color] duration-150 ease-out hover:bg-muted/60 sm:grid-cols-[1.5rem_auto_1fr_8rem_auto_auto]">
+                    <Link href={`/casino/${c.slug}?range=${range}`} className="group grid grid-cols-[1.5rem_auto_1fr_5.5rem] items-center gap-3 rounded-sm px-3 py-2.5 transition-[background-color] duration-150 ease-out hover:bg-muted/60 sm:grid-cols-[1.5rem_auto_1fr_8rem_5.5rem_4.5rem_6rem]">
                       <span className="text-xs text-muted-foreground tabular-nums">{i + 1}</span>
                       <CasinoLogo casino={c} size={30} />
                       <span className="min-w-0">
@@ -106,7 +145,7 @@ export function OverviewView(initial: OverviewData) {
                         <span className="block truncate text-xs text-muted-foreground">{c.tagline}</span>
                       </span>
                       <span className="hidden sm:block"><Sparkline data={spark} color={c.color} height={26} /></span>
-                      <span className="text-right">
+                      <span className={cn("min-w-14 text-right", sort === "wagered" && "text-foreground")}>
                         <span className="block text-sm font-medium tabular-nums">{moneyShort(s?.wagered ?? 0)}</span>
                         <span className="block text-[11px] text-muted-foreground">{countShort(s?.players ?? 0)} players</span>
                       </span>
@@ -118,6 +157,16 @@ export function OverviewView(initial: OverviewData) {
                         </TooltipTrigger>
                         <TooltipContent side="top">
                           Site profit, {rangeLabel(range)}: wagered minus paid out. {(s?.net ?? 0) >= 0 ? "The house is ahead." : "Players are ahead."}
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={cn("hidden min-w-14 cursor-default text-right text-xs tabular-nums sm:block", sort === "rtp" ? "font-medium text-foreground" : "text-muted-foreground")}>
+                            {s?.wagered ? `${s.rtp.toFixed(1)}%` : "—"}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          Realized RTP, {rangeLabel(range)}: paid out as a share of wagered. {s?.wagered ? (s.rtp >= 100 ? "Players took out more than they put in." : `The site kept ${(100 - s.rtp).toFixed(1)}%.`) : "No bets in range."}
                         </TooltipContent>
                       </Tooltip>
                     </Link>

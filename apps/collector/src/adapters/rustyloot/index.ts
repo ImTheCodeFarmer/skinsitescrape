@@ -7,6 +7,11 @@
  * Battles (with borrow), Wheel, PVP Mines and Coinflip come from their own
  * rooms, with player ids.
  *
+ * Chat is not collected, but it is watched: every message (and the backlog
+ * that arrives with `system:connect`) carries the speaker's site id and
+ * `steamid`, which become player_identities rows so Rustyloot accounts link
+ * to the same Steam account on other sites. No message text is kept.
+ *
  * Not tracked, by decision on 2026-09-17: Plinko, Upgrader, Mines and Cases
  * are private games. Their only public trace is `betting:live-bets`, the
  * site's live bet table, which does show losses but carries no bet or user
@@ -17,6 +22,17 @@ import type { SiteAdapter } from "../../core/adapter.js";
 import { handleBattleNew, handleBattlePlayer, handleBattleResults } from "./battles.js";
 import { handleCoinflip, handlePvpMines, handleWheelState } from "./games.js";
 import { ORIGIN, SITE } from "./site.js";
+import type { AdapterContext } from "../../core/adapter.js";
+
+type ChatUser = { id?: number | string; steamid?: string | null; username?: string | null; avatar?: string | null };
+
+/** Remember who a chat user is on Steam; the message itself is dropped. */
+function seenInChat(u: ChatUser | null | undefined, at: Date, ctx: AdapterContext) {
+  if (u?.id == null || !u.steamid) return;
+  const id = String(u.id);
+  ctx.sink.player({ site: SITE, externalId: id, displayName: u.username ?? null, avatar: u.avatar ?? null, seenAt: at });
+  ctx.sink.identity({ site: SITE, externalId: id, steamId: String(u.steamid), source: "chat", seenAt: at });
+}
 
 export const ROOMS = ["battles", "wheel", "pvpmines", "coinflip"];
 
@@ -36,6 +52,15 @@ export const rustyloot: SiteAdapter = {
   handle({ event, args, receivedAt }, ctx) {
     const p = args[0];
     switch (event) {
+      case "system:connect": {
+        // Recent chat per language room, sent once on connect.
+        const rooms = (p as { chat?: Record<string, { user?: ChatUser }[]> })?.chat ?? {};
+        for (const msgs of Object.values(rooms)) for (const m of msgs ?? []) seenInChat(m?.user, receivedAt, ctx);
+        return;
+      }
+      case "chat:message:new":
+        return seenInChat((p as { user?: ChatUser })?.user, receivedAt, ctx);
+
       case "battles:new":
         ctx.sink.rawEvent({ site: SITE, event, payload: p, receivedAt });
         return handleBattleNew(p, receivedAt);

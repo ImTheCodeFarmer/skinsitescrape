@@ -127,6 +127,13 @@ export async function createRule(steamId: string, i: RuleInput) {
     VALUES (${steamId}, ${i.name.trim().slice(0, 60)}, ${i.kind}, ${i.site}, ${i.game}, ${i.playerId}, ${i.kind === "big_win" ? null : i.minWagered}, ${i.kind === "big_win" ? i.minNetWin : null}, ${i.cooldownSeconds})`);
 }
 
+export async function updateRule(steamId: string, id: number, i: RuleInput) {
+  await db().execute(sql`
+    UPDATE alert_rules SET name = ${i.name.trim().slice(0, 60)}, kind = ${i.kind}, site = ${i.site}, game = ${i.game}, player_id = ${i.playerId},
+      min_wagered = ${i.kind === "big_win" ? null : i.minWagered}, min_net_win = ${i.kind === "big_win" ? i.minNetWin : null}, cooldown_seconds = ${i.cooldownSeconds}
+    WHERE id = ${id} AND steam_id = ${steamId}`);
+}
+
 export async function setRuleEnabled(steamId: string, id: number, enabled: boolean) {
   await db().execute(sql`UPDATE alert_rules SET enabled = ${enabled} WHERE id = ${id} AND steam_id = ${steamId}`);
 }

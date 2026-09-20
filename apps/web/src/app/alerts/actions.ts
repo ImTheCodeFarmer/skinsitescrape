@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession, isAdmin } from "@/lib/auth";
-import { connectChat, createRule, deleteRule, findPlayers, removeBot, saveToken, sendTest, setRuleEnabled, testRule, validateRule, type RuleInput, type RuleKind } from "@/lib/alerts";
+import { connectChat, createRule, deleteRule, findPlayers, removeBot, saveToken, sendTest, setRuleEnabled, testRule, updateRule, validateRule, type RuleInput, type RuleKind } from "@/lib/alerts";
 import type { FoundPlayer, PlayerFilters } from "@/lib/alerts-shared";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string } | null;
@@ -55,24 +55,43 @@ const num = (v: FormDataEntryValue | null) => {
   return Number.isFinite(n) ? n : null;
 };
 
+function ruleInput(form: FormData): RuleInput {
+  const kind = String(form.get("kind") ?? "big_bet") as RuleKind;
+  return {
+    name: String(form.get("name") ?? ""),
+    kind,
+    site: String(form.get("site") ?? "") || null,
+    game: String(form.get("game") ?? "").trim().toLowerCase() || null,
+    playerId: kind === "player_bet" ? String(form.get("playerId") ?? "").trim() || null : null,
+    minWagered: num(form.get("minWagered")),
+    minNetWin: num(form.get("minNetWin")),
+    cooldownSeconds: Math.round((num(form.get("cooldownMinutes")) ?? 0) * 60),
+  };
+}
+
 export async function createRuleAction(_: ActionState, form: FormData): Promise<ActionState> {
   try {
-    const kind = String(form.get("kind") ?? "big_bet") as RuleKind;
-    const input: RuleInput = {
-      name: String(form.get("name") ?? ""),
-      kind,
-      site: String(form.get("site") ?? "") || null,
-      game: String(form.get("game") ?? "").trim().toLowerCase() || null,
-      playerId: String(form.get("playerId") ?? "").trim() || null,
-      minWagered: num(form.get("minWagered")),
-      minNetWin: num(form.get("minNetWin")),
-      cooldownSeconds: Math.round((num(form.get("cooldownMinutes")) ?? 0) * 60),
-    };
+    const input = ruleInput(form);
     const err = validateRule(input);
     if (err) return { ok: false, error: err };
     await createRule(await owner(), input);
     revalidatePath("/alerts");
     return { ok: true, message: "Alert added." };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
+  }
+}
+
+export async function updateRuleAction(_: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const id = Number(form.get("id"));
+    if (!Number.isInteger(id)) return { ok: false, error: "Unknown alert." };
+    const input = ruleInput(form);
+    const err = validateRule(input);
+    if (err) return { ok: false, error: err };
+    await updateRule(await owner(), id, input);
+    revalidatePath("/alerts");
+    return { ok: true, message: "Alert saved." };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
   }

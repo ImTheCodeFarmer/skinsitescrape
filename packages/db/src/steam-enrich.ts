@@ -119,9 +119,11 @@ export class SteamEnricher {
   private async due(limit: number): Promise<{ steamId: string; tier: Tier }[]> {
     const r = (await this.db.execute(sql`
       WITH ids AS (
-        SELECT external_id AS steam_id, max(last_seen) AS last_seen
-        FROM players WHERE external_id ~ '^7656119[0-9]{10}$' AND NOT is_house
-        GROUP BY external_id
+        SELECT steam_id, max(last_seen) AS last_seen FROM (
+          SELECT external_id AS steam_id, last_seen FROM players WHERE external_id ~ '^7656119[0-9]{10}$' AND NOT is_house
+          UNION ALL
+          SELECT pi.steam_id, pl.last_seen FROM player_identities pi JOIN players pl ON pl.site = pi.site AND pl.external_id = pi.external_id
+        ) u GROUP BY steam_id
       )
       SELECT i.steam_id, i.last_seen,
              CASE WHEN i.last_seen >= now() - interval '7 days' THEN 'hot' WHEN i.last_seen >= now() - interval '30 days' THEN 'warm' ELSE 'cold' END AS tier
@@ -156,7 +158,8 @@ export class SteamEnricher {
     if (!STEAM64.test(steamId)) return { ok: false, error: "not a Steam64 id" };
     const t = (await this.db.execute(sql`
       SELECT CASE WHEN max(last_seen) >= now() - interval '7 days' THEN 'hot' WHEN max(last_seen) >= now() - interval '30 days' THEN 'warm' ELSE 'cold' END AS tier
-      FROM players WHERE external_id = ${steamId}`)) as unknown as { tier: Tier | null }[];
+      FROM players pl WHERE pl.external_id = ${steamId}
+         OR EXISTS (SELECT 1 FROM player_identities pi WHERE pi.steam_id = ${steamId} AND pi.site = pl.site AND pi.external_id = pl.external_id)`)) as unknown as { tier: Tier | null }[];
     const tier: Tier = t[0]?.tier ?? "warm";
     const r = await this.fetchProfiles([{ steamId, tier: tier === "cold" ? "warm" : tier }]);
     if (r.failed.length) return { ok: false, error: r.failed[0] };

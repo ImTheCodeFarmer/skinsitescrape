@@ -131,8 +131,9 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="px-4 py-3">
+      <SidebarFooter className="flex flex-col gap-1 px-4 py-3">
         <p className="text-[11px] text-muted-foreground">Live data · 14-day sparklines</p>
+        <p className="text-[11px] text-muted-foreground">Made with love from Hawaii and Spain</p>
       </SidebarFooter>
     </Sidebar>
   );

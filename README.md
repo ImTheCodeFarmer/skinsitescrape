@@ -289,6 +289,10 @@ does show losses but carries no bet or user ids and is dripped at one row a
 second, so its completeness under load is unknown. By decision on 2026-09-17
 it is not collected, not even raw.
 
+Chat is watched but not stored: every message carries the speaker's site id
+and `steamid`, which become `player_identities` rows (see "Player profiles
+and identity links").
+
 ## CSGORoll
 
 GraphQL subscriptions over `graphql-transport-ws` at
@@ -377,6 +381,16 @@ refresh by hand).
 | Same Steam profile picture and same name | 0.98 | Sites that pass the `avatars.steamstatic.com` URL through expose its content hash; two accounts share it only when they are the same Steam account or uploaded the same image. Default pictures and any hash owned by more than six accounts are ignored. |
 | Same Steam profile picture | 0.9, or 0.75 when a few other accounts share it | |
 | Same display name only | 0.35 to 0.45 by length, +0.2 when both were active on 3 or more of the same days, −0.15 when they never were despite regular play on both | Names are normalized to lower-case letters and digits, must be five or more characters, and must be rare (at most four accounts). |
+
+**Steam ids learned from chat.** Some sites do not key players by Steam id
+but still reveal it: Rustyloot's chat sends each speaker's site id and
+`steamid` together, and its connect handshake carries the recent backlog.
+The Rustyloot adapter turns those into `player_identities` rows (site,
+site id, Steam id, source) and drops the message itself; nothing from chat
+is stored. The link job, the Steam enrichment queue and the profile's
+Steam tab all treat a learned id exactly like a Steam-keyed one (migration
+0016). Two minutes of listening on 2026-09-20 yielded sixteen mappings.
+Other sites' chats can feed the same table if they expose the id.
 
 **Ruled out by Steam id.** On sites that key players by Steam id, two
 accounts with different ids are two different Steam accounts, so a shared
