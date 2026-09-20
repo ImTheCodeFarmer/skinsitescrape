@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
-import { LayoutGrid, ShieldCheck } from "lucide-react";
+import { LayoutGrid, ShieldCheck, Tag } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
@@ -46,6 +46,14 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
                   <Link href={`/${qs}`}>
                     <LayoutGrid className="size-4" strokeWidth={1.5} />
                     <span>Overview</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/pricing"}>
+                  <Link href="/pricing">
+                    <Tag className="size-4" strokeWidth={1.5} />
+                    <span>Pricing</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

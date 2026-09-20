@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Lock } from "lucide-react";
 import { SteamSignInLink } from "@/components/steam-button";
 
@@ -16,7 +17,7 @@ export function Restricted({ what, signedIn }: { what: string; signedIn: boolean
         <p className="mt-1.5 text-sm text-muted-foreground">
           This part of the site is limited to approved accounts. Reach{" "}
           <a href="https://t.me/steveatit" target="_blank" rel="noreferrer" className="font-medium text-foreground underline underline-offset-4">@steveatit on Telegram</a>{" "}
-          for access information.
+          for access information, or <Link href="/pricing" className="font-medium text-foreground underline underline-offset-4">see the plans</Link>.
         </p>
         {!signedIn ? (
           <div className="mt-5 flex flex-wrap items-center gap-3">
