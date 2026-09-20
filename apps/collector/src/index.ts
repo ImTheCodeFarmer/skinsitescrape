@@ -5,7 +5,7 @@ import { connectBrowser } from "./core/transport-browser.js";
 import { connectWstap } from "./core/transport-wstap.js";
 import { Sink } from "./core/sink.js";
 import { Alerts } from "./core/alerts.js";
-import { SteamEnricher } from "./core/steam.js";
+import { SteamEnricher } from "@casino/db/steam-enrich";
 import { StatusReporter } from "./core/status.js";
 import { log } from "./core/log.js";
 
@@ -16,7 +16,7 @@ const connect = { socketio: connectSocketIo, browser: connectBrowser, wstap: con
 const { db, close } = createDb();
 const alerts = new Alerts(db);
 // Steam profile enrichment runs alongside the collectors unless switched off; it paces itself under STEAM_RPS / STEAM_DAILY_MAX.
-const steam = process.env.STEAM_ENRICH === "false" ? null : new SteamEnricher(db);
+const steam = process.env.STEAM_ENRICH === "false" ? null : new SteamEnricher(db, log);
 steam?.start();
 const sink = new Sink(db, { recordRaw: process.env.RECORD_RAW !== "false", onBets: (b) => alerts.onBets(b) });
 

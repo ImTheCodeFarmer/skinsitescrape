@@ -769,7 +769,7 @@ export async function playerProfile(site: string, id: string, range: Range): Pro
     games: perAccount[i][1],
     recent: perAccount[i][2],
   }));
-  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: sumTotals(counted.map((c) => c.totals)), combined: { series, games, recent }, steam };
+  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: sumTotals(counted.map((c) => c.totals)), combined: { series, games, recent }, steamId: steamIds[0] ?? null, steam };
 }
 
 /** Steam profile data for a Steam-keyed account, when the collector has fetched it. */

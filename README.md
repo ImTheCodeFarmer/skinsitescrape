@@ -481,7 +481,8 @@ the collector fetches what Steam shows publicly into `steam_profiles` and
 visibility, country, account age, last log-off, VAC and game bans, the
 friends list (public ones only, capped at 500 ids) and the profile's past
 names, which Steam only exposes on the profile page. The profile page shows
-it as a Steam card; the link job uses the picture hash for accounts whose
+it on a Steam tab, with a "Fetch Steam data" button that runs the same
+fetch on the spot when we hold a Steam id but no data yet (same budget); the link job uses the picture hash for accounts whose
 site gives none and treats any past alias as a name match
 (`evidence.alias`, scored 0.05 below a current-name match).
 

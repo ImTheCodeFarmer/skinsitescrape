@@ -254,7 +254,9 @@ export type PlayerProfile = {
   counted: AccountStats[];
   totals: PlayerTotals;
   combined: { series: PlayerPoint[]; games: GameStat[]; recent: BetRow[] };
-  /** The Steam profile behind the counted accounts, when any of them is Steam-keyed and it has been fetched. */
+  /** The Steam id behind the counted accounts, when any of them is Steam-keyed. */
+  steamId: string | null;
+  /** That Steam profile, once fetched. */
   steam: SteamProfile | null;
 };
 

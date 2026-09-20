@@ -22,8 +22,12 @@
  * is only done for players active in the last 30 days. Everything runs off
  * timers between socket events and never blocks the sink.
  */
-import { sql, type Db } from "@casino/db";
-import { log } from "./log.js";
+import { sql } from "drizzle-orm";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+
+type Db = PostgresJsDatabase<Record<string, unknown>>;
+/** Minimal logger so the collector can pass pino and the web app can pass console. */
+export type SteamLog = { info: (o: unknown, msg?: string) => void; warn: (o: unknown, msg?: string) => void; debug?: (o: unknown, msg?: string) => void };
 
 const STEAM64 = /^7656119[0-9]{10}$/;
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
@@ -55,16 +59,16 @@ export class SteamEnricher {
   private running = false;
   private stopped = false;
 
-  constructor(private db: Db, private batch = Number(process.env.STEAM_BATCH) || 100) {}
+  constructor(private db: Db, private log: SteamLog = console, private batch = Number(process.env.STEAM_BATCH) || 100) {}
 
   start() {
-    log.info({ api: Boolean(this.key), rps: this.rps, dailyMax: this.dailyMax }, "steam enrichment on");
+    this.log.info({ api: Boolean(this.key), rps: this.rps, dailyMax: this.dailyMax }, "steam enrichment on");
     const tick = async () => {
       if (this.stopped) return;
       try {
         await this.runOnce();
       } catch (err) {
-        log.warn({ err }, "steam enrichment tick failed");
+        this.log.warn({ err }, "steam enrichment tick failed");
       }
       if (!this.stopped) this.timer = setTimeout(tick, 60_000);
     };
@@ -96,12 +100,12 @@ export class SteamEnricher {
     try {
       const res = await fetch(url, { headers: { "user-agent": UA, accept: "application/json, text/xml;q=0.9, */*;q=0.8" }, signal: AbortSignal.timeout(15_000) });
       if (res.status === 429) {
-        log.warn("steam rate limited us, pausing 10 minutes");
+        this.log.warn({}, "steam rate limited us, pausing 10 minutes");
         this.tokens = -this.rps * 600;
       }
       return res;
     } catch (err) {
-      log.debug({ err, url: url.replace(/key=[^&]+/, "key=…") }, "steam request failed");
+      this.log.debug?.({ err, url: url.replace(/key=[^&]+/, "key=…") }, "steam request failed");
       return null;
     }
   }
@@ -135,49 +139,71 @@ export class SteamEnricher {
     try {
       const list = await this.due(limit);
       if (!list.length) return 0;
-      const tierOf = new Map(list.map((x) => [x.steamId, x.tier]));
-      const ids = list.map((x) => x.steamId);
-      const visible = new Map<string, boolean>();
-      if (this.key) {
-        for (let i = 0; i < ids.length; i += 100) {
-          const chunk = ids.slice(i, i + 100);
-          const [sums, bans] = await Promise.all([this.summaries(chunk), this.bans(chunk)]);
-          if (!sums) { await this.markError(chunk, "summaries unavailable", tierOf); continue; }
-          for (const id of chunk) {
-            const s = sums.get(id);
-            if (!s) { await this.markError([id], "not found", tierOf); continue; }
-            const pub = s.communityvisibilitystate === 3;
-            visible.set(id, pub);
-            await this.upsert(id, {
-              persona: s.personaname ?? null, avatar: s.avatarfull ?? null, avatarHash: s.avatarfull?.match(AVATAR_HASH)?.[1] ?? null, profileUrl: s.profileurl ?? null,
-              vanity: s.profileurl?.match(/\/id\/([^/]+)/)?.[1] ?? null, visibility: pub ? "public" : s.communityvisibilitystate === 1 ? "private" : "friends",
-              country: s.loccountrycode ?? null, createdAt: s.timecreated ? new Date(s.timecreated * 1000) : null, lastLogoff: s.lastlogoff ? new Date(s.lastlogoff * 1000) : null,
-              vacBanned: bans?.get(id)?.VACBanned ?? null, gameBans: bans?.get(id)?.NumberOfGameBans ?? null, source: "api",
-            }, tierOf.get(id)!);
-          }
-        }
-      } else {
-        for (const id of ids) {
-          const x = await this.xml(id);
-          if (!x) { await this.markError([id], "xml unavailable", tierOf); continue; }
-          visible.set(id, x.visibility === "public");
-          await this.upsert(id, { ...x, source: "xml" }, tierOf.get(id)!);
-        }
-      }
-      // Extras for active, public profiles only.
-      let extras = 0;
-      for (const id of ids) {
-        const tier = tierOf.get(id)!;
-        if (!TIERS[tier].extras || !visible.get(id)) continue;
-        await this.aliases(id);
-        if (this.key) await this.friends(id);
-        extras += 1;
-      }
-      log.info({ profiles: ids.length, extras, usedToday: this.usedToday }, "steam enrichment pass");
-      return ids.length;
+      const { extras } = await this.fetchProfiles(list);
+      this.log.info({ profiles: list.length, extras, usedToday: this.usedToday }, "steam enrichment pass");
+      return list.length;
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * Fetch one profile now, whatever its schedule (the dashboard's "Fetch
+   * Steam data" button). Costs the same budget as a scheduled fetch; a
+   * player active in the last 30 days also gets aliases and friends.
+   */
+  async fetchOne(steamId: string): Promise<{ ok: boolean; error?: string }> {
+    if (!STEAM64.test(steamId)) return { ok: false, error: "not a Steam64 id" };
+    const t = (await this.db.execute(sql`
+      SELECT CASE WHEN max(last_seen) >= now() - interval '7 days' THEN 'hot' WHEN max(last_seen) >= now() - interval '30 days' THEN 'warm' ELSE 'cold' END AS tier
+      FROM players WHERE external_id = ${steamId}`)) as unknown as { tier: Tier | null }[];
+    const tier: Tier = t[0]?.tier ?? "warm";
+    const r = await this.fetchProfiles([{ steamId, tier: tier === "cold" ? "warm" : tier }]);
+    if (r.failed.length) return { ok: false, error: r.failed[0] };
+    return { ok: true };
+  }
+
+  private async fetchProfiles(list: { steamId: string; tier: Tier }[]): Promise<{ extras: number; failed: string[] }> {
+    const tierOf = new Map(list.map((x) => [x.steamId, x.tier]));
+    const ids = list.map((x) => x.steamId);
+    const visible = new Map<string, boolean>();
+    const failed: string[] = [];
+    if (this.key) {
+      for (let i = 0; i < ids.length; i += 100) {
+        const chunk = ids.slice(i, i + 100);
+        const [sums, bans] = await Promise.all([this.summaries(chunk), this.bans(chunk)]);
+        if (!sums) { await this.markError(chunk, "summaries unavailable"); failed.push("Steam did not answer (summaries unavailable)"); continue; }
+        for (const id of chunk) {
+          const s = sums.get(id);
+          if (!s) { await this.markError([id], "not found"); failed.push("Steam has no profile for that id"); continue; }
+          const pub = s.communityvisibilitystate === 3;
+          visible.set(id, pub);
+          await this.upsert(id, {
+            persona: s.personaname ?? null, avatar: s.avatarfull ?? null, avatarHash: s.avatarfull?.match(AVATAR_HASH)?.[1] ?? null, profileUrl: s.profileurl ?? null,
+            vanity: s.profileurl?.match(/\/id\/([^/]+)/)?.[1] ?? null, visibility: pub ? "public" : s.communityvisibilitystate === 1 ? "private" : "friends",
+            country: s.loccountrycode ?? null, createdAt: s.timecreated ? new Date(s.timecreated * 1000) : null, lastLogoff: s.lastlogoff ? new Date(s.lastlogoff * 1000) : null,
+            vacBanned: bans?.get(id)?.VACBanned ?? null, gameBans: bans?.get(id)?.NumberOfGameBans ?? null, source: "api",
+          }, tierOf.get(id)!);
+        }
+      }
+    } else {
+      for (const id of ids) {
+        const x = await this.xml(id);
+        if (!x) { await this.markError([id], "xml unavailable"); failed.push("Steam did not answer (profile unavailable or budget exhausted)"); continue; }
+        visible.set(id, x.visibility === "public");
+        await this.upsert(id, { ...x, source: "xml" }, tierOf.get(id)!);
+      }
+    }
+    // Extras for active, public profiles only.
+    let extras = 0;
+    for (const id of ids) {
+      const tier = tierOf.get(id)!;
+      if (!TIERS[tier].extras || !visible.get(id)) continue;
+      await this.aliases(id);
+      if (this.key) await this.friends(id);
+      extras += 1;
+    }
+    return { extras, failed };
   }
 
   // ------------------------------------------------------------ sources
@@ -266,13 +292,12 @@ export class SteamEnricher {
   }
 
   /** A failed fetch is retried after a day so one bad response cannot pin the queue. */
-  private async markError(ids: string[], error: string, tierOf: Map<string, Tier>) {
+  private async markError(ids: string[], error: string) {
     for (const id of ids) {
       await this.db.execute(sql`
         INSERT INTO steam_profiles (steam_id, visibility, next_fetch_at, fetch_count, fetch_error)
         VALUES (${id}, 'unknown', now() + interval '1 day', 1, ${error})
         ON CONFLICT (steam_id) DO UPDATE SET next_fetch_at = now() + interval '1 day', fetch_count = steam_profiles.fetch_count + 1, fetch_error = ${error}`);
-      void tierOf;
     }
   }
 }

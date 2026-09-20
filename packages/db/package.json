@@ -20,6 +20,11 @@
       "source": "./src/alerts-format.ts",
       "types": "./dist/alerts-format.d.ts",
       "default": "./dist/alerts-format.js"
+    },
+    "./steam-enrich": {
+      "source": "./src/steam-enrich.ts",
+      "types": "./dist/steam-enrich.d.ts",
+      "default": "./dist/steam-enrich.js"
     }
   },
   "scripts": {
