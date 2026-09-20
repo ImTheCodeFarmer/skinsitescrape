@@ -6,7 +6,7 @@
  * per (rule, bet) makes sends idempotent across re-flushes and restarts; a
  * rule's cooldown holds further sends for that many seconds after one.
  */
-import { decryptSecret, sql, type Db } from "@casino/db";
+import { decryptSecret, formatAlert, sql, type Db } from "@casino/db";
 import type { BetRow } from "./sink.js";
 import { log } from "./log.js";
 
@@ -25,15 +25,6 @@ type Rule = {
   token: string;
   chatId: string;
 };
-
-const SITE_NAMES: Record<string, string> = {
-  rustypot: "Rustypot", clash: "Clash.gg", rustclash: "RustClash", rustyloot: "Rustyloot", cases: "Cases.gg", rusteasy: "RustEasy", csgogem: "CSGOGem",
-  banditcamp: "Bandit.camp", csgoroll: "CSGORoll", rustmagic: "RustMagic", splits: "Splits.gg", rustbattle: "RustBattle",
-};
-const KIND_LABEL: Record<Rule["kind"], string> = { big_bet: "Big bet", player_bet: "Player bet", big_win: "Big win" };
-const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const title = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/-/g, " ");
 
 export class Alerts {
   private rules: Rule[] = [];
@@ -116,13 +107,7 @@ export class Alerts {
     const ins = (await this.db.execute(sql`INSERT INTO alert_deliveries (rule_id, key) VALUES (${r.id}, ${key}) ON CONFLICT DO NOTHING RETURNING rule_id`)) as unknown as unknown[];
     if (!ins.length) return; // already sent for this bet
     const name = await this.playerName(b.site, b.playerId);
-    const net = b.payoutUsd - b.wageredUsd;
-    const result = b.won == null && net === 0 ? "pushed" : net >= 0 ? `won ${usd(b.payoutUsd)} (+${usd(net)})` : `lost ${usd(-net)}`;
-    const profile = this.webUrl ? `\n<a href="${this.webUrl}/player/${b.site}/${encodeURIComponent(b.playerId)}">Open profile</a>` : "";
-    const text =
-      `🎲 <b>${esc(KIND_LABEL[r.kind])}</b> · ${esc(r.name)}\n` +
-      `<b>${esc(name)}</b> wagered <b>${usd(b.wageredUsd)}</b> on ${esc(title(b.game))} at ${esc(SITE_NAMES[b.site] ?? title(b.site))}\n` +
-      `Result: ${esc(result)}` + profile;
+    const text = formatAlert(r, { site: b.site, game: b.game, playerId: b.playerId, playerName: name, wageredUsd: b.wageredUsd, payoutUsd: b.payoutUsd, won: b.won ?? null }, { webUrl: this.webUrl });
     const res = await fetch(`https://api.telegram.org/bot${r.token}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },

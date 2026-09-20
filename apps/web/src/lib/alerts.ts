@@ -1,5 +1,5 @@
 import "server-only";
-import { decryptSecret, encryptSecret, sql } from "@casino/db";
+import { decryptSecret, encryptSecret, formatAlert, sql } from "@casino/db";
 import { db } from "./db";
 import { CASINOS } from "./casinos";
 import { KIND_LABELS, type AlertBot, type AlertRule, type RuleKind } from "./alerts-shared";
@@ -135,3 +135,29 @@ export async function deleteRule(steamId: string, id: number) {
   await db().execute(sql`DELETE FROM alert_rules WHERE id = ${id} AND steam_id = ${steamId}`);
 }
 
+
+/**
+ * Send a sample of one rule to the owner's chat, built from the rule
+ * itself: its site and game where set, the followed player's real name for
+ * a player rule, and amounts just above the rule's thresholds.
+ */
+export async function testRule(steamId: string, id: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  const [token, bot, rules] = await Promise.all([tokenFor(steamId), getBot(steamId), listRules(steamId)]);
+  const r = rules.find((x) => x.id === id);
+  if (!r) return { ok: false, error: "That alert no longer exists." };
+  if (!token || !bot?.chatId) return { ok: false, error: "Connect a chat first." };
+  const site = r.site ?? "rustypot";
+  const game = r.game ?? (r.kind === "big_win" ? "crash" : "coinflip");
+  const wagered = r.kind === "big_win" ? Math.max(100, (r.minNetWin ?? 0) / 4) : Math.max(r.minWagered ?? 0, 25) * 1.2;
+  const payout = r.kind === "big_win" ? wagered + (r.minNetWin ?? 0) * 1.1 : wagered * 2;
+  const text = formatAlert(r, {
+    site, game, playerId: r.playerId ?? "76561198000000000", playerName: r.playerName ?? (r.kind === "player_bet" ? r.playerId ?? "Player" : "SamplePlayer"),
+    wageredUsd: Math.round(wagered), payoutUsd: Math.round(payout), won: true,
+  }, { webUrl: process.env.NEXT_PUBLIC_SITE_URL ?? process.env.PUBLIC_WEB_URL ?? null, test: true });
+  const res = await tg(token, "sendMessage", { chat_id: bot.chatId, text, parse_mode: "HTML", disable_web_page_preview: true });
+  if (!res.ok) {
+    await db().execute(sql`UPDATE alert_bots SET last_error = ${res.description ?? "send failed"}, updated_at = now() WHERE steam_id = ${steamId}`);
+    return { ok: false, error: `Telegram said: ${res.description ?? "send failed"}` };
+  }
+  return { ok: true };
+}

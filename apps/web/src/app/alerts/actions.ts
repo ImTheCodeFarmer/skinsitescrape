@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession, isAdmin } from "@/lib/auth";
-import { connectChat, createRule, deleteRule, removeBot, saveToken, sendTest, setRuleEnabled, validateRule, type RuleInput, type RuleKind } from "@/lib/alerts";
+import { connectChat, createRule, deleteRule, removeBot, saveToken, sendTest, setRuleEnabled, testRule, validateRule, type RuleInput, type RuleKind } from "@/lib/alerts";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string } | null;
 
@@ -85,4 +85,14 @@ export async function toggleRuleAction(id: number, enabled: boolean): Promise<vo
 export async function deleteRuleAction(id: number): Promise<void> {
   await deleteRule(await owner(), id);
   revalidatePath("/alerts");
+}
+
+export async function testRuleAction(id: number): Promise<ActionState> {
+  try {
+    const r = await testRule(await owner(), id);
+    revalidatePath("/alerts");
+    return r.ok ? { ok: true, message: "Sample sent. Check Telegram." } : { ok: false, error: r.error };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
+  }
 }

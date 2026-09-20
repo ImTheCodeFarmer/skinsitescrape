@@ -17,7 +17,7 @@ type Props = { params: Promise<{ site: string; id: string }>; searchParams: Prom
  */
 export default async function Page({ params, searchParams }: Props) {
   const session = await getSession();
-  if (!isAdmin(session)) return <Restricted what="Player profiles" signedIn={Boolean(session)} />;
+  if (!isAdmin(session)) return <Restricted what="Player profiles" pitch="Every player's wagers, profit and loss and recent bets, with their accounts linked across sites." signedIn={Boolean(session)} />;
 
   const [{ site, id }, sp] = await Promise.all([params, searchParams]);
   if (!getCasinoMeta(site)) notFound();

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useActionState, useTransition } from "react";
-import { AlertTriangle, Bell, BellOff, Check, ExternalLink, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Bell, BellOff, Check, ExternalLink, FlaskConical, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Reveal, Stagger } from "@/components/reveal";
 import { TimeAgo } from "@/components/time-ago";
 import { CASINOS, GAME_LABELS } from "@/lib/casinos";
 import { describeRule, KIND_LABELS, type AlertBot, type AlertRule, type RuleKind } from "@/lib/alerts-shared";
-import { connectChatAction, createRuleAction, deleteRuleAction, removeBotAction, saveTokenAction, sendTestAction, toggleRuleAction, type ActionState } from "@/app/alerts/actions";
+import { connectChatAction, createRuleAction, deleteRuleAction, removeBotAction, saveTokenAction, sendTestAction, testRuleAction, toggleRuleAction, type ActionState } from "@/app/alerts/actions";
 import { cn } from "@/lib/utils";
 
 /** Native select, styled to sit beside <Input>. */
@@ -221,6 +221,7 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
 function RuleRow({ r }: { r: AlertRule }) {
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = React.useState(false);
+  const [test, setTest] = React.useState<ActionState>(null);
   return (
     <li className={cn("flex flex-col gap-2 rounded-lg px-3 py-2.5 shadow-border sm:flex-row sm:items-center sm:gap-4", !r.enabled && "opacity-60")}>
       <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", r.enabled ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground")}>
@@ -236,8 +237,12 @@ function RuleRow({ r }: { r: AlertRule }) {
         <span className="block text-[11px] text-muted-foreground tabular-nums">
           {r.firedCount ? <>Sent {r.firedCount.toLocaleString("en-US")} {r.firedCount === 1 ? "time" : "times"}{r.lastFiredAt ? <>, last <TimeAgo iso={r.lastFiredAt} /></> : null}</> : "Never sent yet"}
         </span>
+        <Outcome state={test} />
       </span>
       <span className="flex shrink-0 items-center gap-1">
+        <Button size="xs" variant="ghost" disabled={pending} title="Send a sample of this alert to your chat" onClick={() => start(async () => setTest(await testRuleAction(r.id)))}>
+          <FlaskConical data-icon="inline-start" className="size-3" strokeWidth={1.5} />Test
+        </Button>
         <Button size="xs" variant="ghost" disabled={pending} onClick={() => start(() => toggleRuleAction(r.id, !r.enabled))}>{r.enabled ? "Pause" : "Resume"}</Button>
         {confirming ? (
           <>

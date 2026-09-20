@@ -57,16 +57,14 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {admin ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname === "/alerts"}>
-                    <Link href="/alerts">
-                      <Bell className="size-4" strokeWidth={1.5} />
-                      <span>Alerts</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : null}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/alerts"}>
+                  <Link href="/alerts">
+                    <Bell className="size-4" strokeWidth={1.5} />
+                    <span>Alerts</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               {admin ? (
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === "/admin"}>
