@@ -12,6 +12,8 @@
     "discover": "node --conditions=source --env-file=../../.env --import tsx src/scripts/discover.ts",
     "reparse": "node --conditions=source --env-file=../../.env --import tsx src/scripts/reparse.ts",
     "backfill": "node --conditions=source --env-file=../../.env --import tsx src/backfill/main.ts",
+    "steam-enrich": "node --conditions=source --env-file=../../.env --import tsx src/scripts/steam-enrich.ts",
+    "steam-enrich:prod": "node dist/scripts/steam-enrich.js",
     "backfill:prod": "node dist/backfill/main.js",
     "reparse:prod": "node dist/scripts/reparse.js",
     "build:wstap": "cd wstap && go build -o wstap ."

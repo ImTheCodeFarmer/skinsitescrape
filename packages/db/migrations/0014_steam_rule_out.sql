@@ -1,67 +1,14 @@
--- Cross-site identity links. One row per pair of player rows on different
--- sites that look like the same person, with a confidence score and the
--- evidence behind it. Player rows are never merged: the dashboard reads the
--- links and shows the confidence, so a link can be revised or dropped when
--- the evidence changes.
---
--- Evidence, strongest first:
---   steam      both ids are the same Steam64 id (Rustypot, RustEasy, Bandit.camp; any site whose ids are Steam64 ids qualifies by shape).
---   avatar     both avatars are the same Steam profile picture. Sites that
---              pass the avatars.steamstatic.com URL through expose its
---              40-hex content hash, which two accounts share only when they
---              are the same Steam account or uploaded the same image. The
---              default pictures and any hash owned by many players are
---              ignored.
---   name       the display names match after normalizing (lower case,
---              letters and digits only), for names that are five or more
---              characters and rare across the data.
---   days       days both accounts were active, out of the days either was,
---              over the last 90 days (the daily rollup); co-activity backs a
---              name match up, and never overlapping despite plenty of play
---              on both sides counts against it.
---
--- Scores: steam 1.0; avatar and name 0.98; avatar alone 0.9, or 0.75 when a
--- few other players share the picture; name alone 0.35 to 0.45 by length,
--- +0.2 with co-activity, -0.15 with none. Pairs under 0.3 are not kept.
--- Recomputed from scratch by a TimescaleDB job every hour.
-
-CREATE OR REPLACE FUNCTION steam_avatar_hash(avatar text) RETURNS text
-  LANGUAGE sql IMMUTABLE STRICT AS $$
-  SELECT CASE
-    WHEN avatar ~ '(steamstatic\.com|steamcommunity)' THEN substring(avatar from '/([0-9a-f]{40})(?:_full|_medium)?\.(?:jpg|png)')
-  END
-$$;
-
-CREATE OR REPLACE FUNCTION norm_name(name text) RETURNS text
-  LANGUAGE sql IMMUTABLE STRICT AS $$
-  SELECT nullif(lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')), '')
-$$;
-
-CREATE INDEX IF NOT EXISTS players_avatar_hash_idx ON players (steam_avatar_hash(avatar)) WHERE steam_avatar_hash(avatar) IS NOT NULL;
-CREATE INDEX IF NOT EXISTS players_norm_name_idx ON players (norm_name(display_name)) WHERE norm_name(display_name) IS NOT NULL;
-
-CREATE TABLE IF NOT EXISTS player_links (
-  site_a      text NOT NULL,
-  player_a    text NOT NULL,
-  site_b      text NOT NULL,
-  player_b    text NOT NULL,
-  score       numeric(4,3) NOT NULL,
-  evidence    jsonb NOT NULL,
-  computed_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (site_a, player_a, site_b, player_b),
-  CHECK (site_a < site_b)
-);
-CREATE INDEX IF NOT EXISTS player_links_b_idx ON player_links (site_b, player_b);
-
--- Both directions of every link, for walking from any account.
-CREATE OR REPLACE VIEW player_links_both AS
-  SELECT site_a AS site, player_a AS player, site_b AS other_site, player_b AS other_player, score, evidence FROM player_links
-  UNION ALL
-  SELECT site_b, player_b, site_a, player_a, score, evidence FROM player_links;
+-- Rule-out by Steam id. On sites that key players by Steam id (Rustypot,
+-- RustEasy, Bandit.camp), two accounts with different ids are two different
+-- Steam accounts, so a shared name or picture must not link them. The job
+-- now drops such pairs before scoring. Permanent links are untouched: a
+-- confirmed pair between two Steam-keyed sites was a Steam match by
+-- definition.
 
 CREATE OR REPLACE PROCEDURE refresh_player_links(job_id int, config jsonb)
 LANGUAGE plpgsql AS $$
 BEGIN
+  DROP TABLE IF EXISTS _pl_next; -- a second call in the same transaction (a manual CALL after the job) must not trip over the last run's table
   CREATE TEMP TABLE _pl_next ON COMMIT DROP AS
   WITH p AS (
     SELECT site, external_id, display_name, avatar,
@@ -70,7 +17,6 @@ BEGIN
            CASE WHEN length(norm_name(display_name)) >= 5 AND norm_name(display_name) NOT IN ('anonymous', 'hidden', 'unknown') THEN norm_name(display_name) END AS nname
     FROM players WHERE NOT is_house
   ),
-  -- Pictures and names shared by many accounts identify nobody.
   ahash_owners AS (SELECT ahash, count(*) AS owners FROM p WHERE ahash IS NOT NULL GROUP BY ahash),
   name_owners  AS (SELECT nname, count(*) AS owners FROM p WHERE nname IS NOT NULL GROUP BY nname),
   cand AS (
@@ -85,6 +31,8 @@ BEGIN
       AND ((a.steam_id IS NOT NULL AND a.steam_id = b.steam_id)
         OR (a.ahash IS NOT NULL AND a.ahash = b.ahash)
         OR (a.nname IS NOT NULL AND a.nname = b.nname))
+      -- Two Steam-keyed accounts with different Steam ids are different Steam accounts, whatever the name or picture says.
+      AND NOT (a.steam_id IS NOT NULL AND b.steam_id IS NOT NULL AND a.steam_id <> b.steam_id)
     LEFT JOIN ahash_owners ao ON ao.ahash = a.ahash
     LEFT JOIN name_owners  no ON no.nname = a.nname
   ),
@@ -122,11 +70,22 @@ BEGIN
                             'sharedDays', shared_days, 'daysA', days_a, 'daysB', days_b) AS evidence
   FROM final WHERE score >= 0.3;
 
+  -- A pair scored as the same person becomes permanent, keyed by user ids only. First confirmation wins.
+  INSERT INTO player_links_confirmed (site_a, player_a, site_b, player_b, score, evidence, source, confirmed_at)
+  SELECT site_a, player_a, site_b, player_b, score, evidence, 'auto', now() FROM _pl_next WHERE score >= 0.95
+  ON CONFLICT (site_a, player_a, site_b, player_b) DO NOTHING;
+
   DELETE FROM player_links;
   INSERT INTO player_links (site_a, player_a, site_b, player_b, score, evidence, computed_at)
   SELECT site_a, player_a, site_b, player_b, score, evidence, now() FROM _pl_next;
+
+  -- Merge the permanent links back: they keep at least their confirmed score whatever the sites show today.
+  INSERT INTO player_links (site_a, player_a, site_b, player_b, score, evidence, computed_at)
+  SELECT c.site_a, c.player_a, c.site_b, c.player_b, c.score,
+         c.evidence || jsonb_build_object('permanent', true, 'confirmedAt', c.confirmed_at, 'source', c.source), now()
+  FROM player_links_confirmed c
+  ON CONFLICT (site_a, player_a, site_b, player_b) DO UPDATE SET
+    score = GREATEST(player_links.score, EXCLUDED.score),
+    evidence = player_links.evidence || (EXCLUDED.evidence - 'steam' - 'avatar' - 'avatarOwners' - 'name' - 'sharedDays' - 'daysA' - 'daysB');
 END
 $$;
-
-SELECT add_job('refresh_player_links', INTERVAL '1 hour', initial_start => now() + INTERVAL '3 minutes')
-WHERE NOT EXISTS (SELECT 1 FROM timescaledb_information.jobs WHERE proc_name = 'refresh_player_links');

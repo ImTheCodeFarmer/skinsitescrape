@@ -373,10 +373,16 @@ refresh by hand).
 
 | Evidence | Score | Why |
 |---|---|---|
-| Same Steam64 id | 1.0 | Rustypot and RustEasy key players by Steam id. |
+| Same Steam64 id | 1.0 | Rustypot, RustEasy and Bandit.camp key players by Steam id. Any site whose ids are Steam64 ids joins automatically: the rule matches the id's shape, not a list of sites. |
 | Same Steam profile picture and same name | 0.98 | Sites that pass the `avatars.steamstatic.com` URL through expose its content hash; two accounts share it only when they are the same Steam account or uploaded the same image. Default pictures and any hash owned by more than six accounts are ignored. |
 | Same Steam profile picture | 0.9, or 0.75 when a few other accounts share it | |
 | Same display name only | 0.35 to 0.45 by length, +0.2 when both were active on 3 or more of the same days, −0.15 when they never were despite regular play on both | Names are normalized to lower-case letters and digits, must be five or more characters, and must be rare (at most four accounts). |
+
+**Ruled out by Steam id.** On sites that key players by Steam id, two
+accounts with different ids are two different Steam accounts, so a shared
+name or picture never links them: the job drops such pairs before scoring
+(migration 0014). A Bandit.camp player and a Rustypot player with the same
+name therefore either link at 100% (same Steam id) or not at all.
 
 **Permanent links.** A pair scored as the same person (0.95 or higher)
 is also written to `player_links_confirmed`, keyed by the two sites' user
@@ -466,6 +472,40 @@ sends through the owner's bot with the site, game, player, stake, result
 and, when `PUBLIC_WEB_URL` is set, a link to the profile. A row per (rule,
 bet) in `alert_deliveries` keeps re-flushed bets from sending twice; a
 failed send is recorded on the bot as `last_error` and shown on the page.
+
+## Steam profile enrichment
+
+For every player keyed by a Steam64 id (Rustypot, RustEasy, Bandit.camp),
+the collector fetches what Steam shows publicly into `steam_profiles` and
+`steam_aliases` (migration 0015, `core/steam.ts`): persona, picture,
+visibility, country, account age, last log-off, VAC and game bans, the
+friends list (public ones only, capped at 500 ids) and the profile's past
+names, which Steam only exposes on the profile page. The profile page shows
+it as a Steam card; the link job uses the picture hash for accounts whose
+site gives none and treats any past alias as a name match
+(`evidence.alias`, scored 0.05 below a current-name match).
+
+**Budget, not appetite.** The job is built to stay small at hundreds of
+thousands of players:
+
+- One token bucket across every Steam request: `STEAM_RPS` per second
+  (default 0.5) and `STEAM_DAILY_MAX` per UTC day (default 15,000). A 429
+  from Steam pauses it for ten minutes. It runs off timers inside the
+  collector and never touches the sink.
+- With `STEAM_API_KEY`, summaries and bans come 100 profiles per request,
+  so 100k players cost 2,000 requests. Without a key it falls back to the
+  profile XML, one request per profile; aliases are always one request per
+  profile and friends one more, so those are only fetched for active
+  players.
+- Freshness follows activity: players seen in the last 7 days refresh
+  every 2 days with aliases and friends, the last 30 days weekly with the
+  same, older ones monthly with the summary only. Never-fetched profiles go
+  first, newest activity first. A failed fetch is retried after a day.
+- `STEAM_ENRICH=false` switches it off; `pnpm --filter collector
+  steam-enrich <passes>` runs passes by hand, for example to backfill.
+
+Only ids we already hold are ever looked up, and nothing is redistributed
+beyond the dashboard's own profile card.
 
 ## Sign in with Steam
 

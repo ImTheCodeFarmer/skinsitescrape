@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, ExternalLink, Link2 } from "lucide-react";
+import { Bell, ExternalLink, Link2, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,7 +79,7 @@ function Activity({ stats, range, site }: { stats: { series: AccountStats["serie
   );
 }
 
-export function PlayerView({ range, anchor, linked, countedAt, counted, totals, combined }: PlayerProfile) {
+export function PlayerView({ range, anchor, linked, countedAt, counted, totals, combined, steam }: PlayerProfile) {
   const anchorMeta = getCasinoMeta(anchor.site);
   const countedKeys = new Set(counted.map((c) => key(c.account)));
   const uncounted = linked.filter((l) => !countedKeys.has(key(l)));
@@ -157,6 +157,36 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
           ) : null}
         </Card>
       </Reveal>
+
+      {steam ? (
+        <Reveal>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">Steam profile{steam.vacBanned ? <Badge variant="outline" className="gap-1 border-rose-500/30 font-normal text-rose-400"><ShieldAlert className="size-3" strokeWidth={1.5} />VAC banned</Badge> : null}</CardTitle>
+              <CardDescription>
+                What Steam shows publicly, refreshed <TimeAgo iso={steam.fetchedAt!} />.{" "}
+                <a href={steam.profileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-4 hover:text-foreground">Open on Steam<ExternalLink className="size-3" strokeWidth={1.5} /></a>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div><div className="text-xs text-muted-foreground">Persona</div><div className="truncate font-medium">{steam.persona ?? "—"}</div></div>
+              <div><div className="text-xs text-muted-foreground">Profile</div><div className="capitalize">{steam.visibility}{steam.country ? ` · ${steam.country}` : ""}</div></div>
+              <div><div className="text-xs text-muted-foreground">Account created</div><div>{steam.accountCreatedAt ? new Date(steam.accountCreatedAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—"}</div></div>
+              <div><div className="text-xs text-muted-foreground">Friends</div><div className="tabular-nums">{steam.friendsCount == null ? "hidden" : steam.friendsCount.toLocaleString("en-US")}{steam.gameBans ? ` · ${steam.gameBans} game ${steam.gameBans === 1 ? "ban" : "bans"}` : ""}</div></div>
+              {steam.aliases.length ? (
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <div className="mb-1.5 text-xs text-muted-foreground">Names used on Steam</div>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {steam.aliases.map((a) => (
+                      <li key={a.name}><Badge variant="secondary" className="gap-1.5 font-normal">{a.name}{a.seenAt ? <span className="text-[10px] text-muted-foreground">{new Date(a.seenAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</span> : null}</Badge></li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </Reveal>
+      ) : null}
 
       <Reveal>
         <Tabs defaultValue="all">

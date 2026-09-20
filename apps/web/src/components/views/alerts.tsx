@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { useActionState, useTransition } from "react";
-import { AlertTriangle, Bell, BellOff, Check, ExternalLink, FlaskConical, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, Bell, Check, ExternalLink, FlaskConical, Pause, Play, Plus, Send, Settings2, Trash2, TrendingUp, Trophy, UserRound, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Reveal, Stagger } from "@/components/reveal";
 import { TimeAgo } from "@/components/time-ago";
 import { PlayerFinder } from "@/components/player-finder";
@@ -175,7 +176,7 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
   const [picked, setPicked] = React.useState<string | null>(prefill.playerName ?? null);
   const games = Object.entries(GAME_LABELS).sort((a, b) => a[1].localeCompare(b[1]));
   return (
-    <form action={act} className="flex flex-col gap-4 rounded-lg p-4 shadow-border">
+    <form action={act} className="flex flex-col gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name" hint="Shown at the top of each message.">
           <Input name="name" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Whales on Rustypot" />
@@ -229,78 +230,138 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
   );
 }
 
-function RuleRow({ r }: { r: AlertRule }) {
+const KIND_ICON: Record<RuleKind, React.ComponentType<React.SVGProps<SVGSVGElement> & { strokeWidth?: number }>> = { big_bet: TrendingUp, player_bet: UserRound, big_win: Trophy };
+const KIND_TONE: Record<RuleKind, string> = { big_bet: "bg-sky-500/15 text-sky-400", player_bet: "bg-violet-500/15 text-violet-400", big_win: "bg-amber-500/15 text-amber-400" };
+
+function RuleCard({ r }: { r: AlertRule }) {
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = React.useState(false);
   const [test, setTest] = React.useState<ActionState>(null);
+  const Icon = KIND_ICON[r.kind];
   return (
-    <li className={cn("flex flex-col gap-2 rounded-lg px-3 py-2.5 shadow-border sm:flex-row sm:items-center sm:gap-4", !r.enabled && "opacity-60")}>
-      <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", r.enabled ? "bg-emerald-500/15 text-emerald-400" : "bg-muted text-muted-foreground")}>
-        {r.enabled ? <Bell className="size-3.5" strokeWidth={1.5} /> : <BellOff className="size-3.5" strokeWidth={1.5} />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
-          {r.name}
-          <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{KIND_LABELS[r.kind].label}</Badge>
-          {!r.enabled ? <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground">paused</Badge> : null}
+    <li className={cn("flex flex-col gap-3 rounded-xl bg-card p-4 shadow-border transition-[box-shadow] duration-150 ease-out hover:shadow-border-hover", !r.enabled && "opacity-70")}>
+      <div className="flex items-start gap-3">
+        <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", r.enabled ? KIND_TONE[r.kind] : "bg-muted text-muted-foreground")}>
+          <Icon className="size-4" strokeWidth={2} />
         </span>
-        <span className="block text-xs text-muted-foreground">{describeRule(r)}{r.cooldownSeconds ? ` · at most one per ${Math.round(r.cooldownSeconds / 60)} min` : ""}</span>
-        <span className="block text-[11px] text-muted-foreground tabular-nums">
-          {r.firedCount ? <>Sent {r.firedCount.toLocaleString("en-US")} {r.firedCount === 1 ? "time" : "times"}{r.lastFiredAt ? <>, last <TimeAgo iso={r.lastFiredAt} /></> : null}</> : "Never sent yet"}
-        </span>
-        <Outcome state={test} />
-      </span>
-      <span className="flex shrink-0 items-center gap-1">
-        <Button size="xs" variant="ghost" disabled={pending} title="Send a sample of this alert to your chat" onClick={() => start(async () => setTest(await testRuleAction(r.id)))}>
-          <FlaskConical data-icon="inline-start" className="size-3" strokeWidth={1.5} />Test
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h3 className="truncate text-sm font-medium">{r.name}</h3>
+            <span className={cn("inline-flex items-center gap-1.5 text-[11px]", r.enabled ? "text-emerald-400" : "text-muted-foreground")}>
+              <span className={cn("size-1.5 rounded-full", r.enabled ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden />
+              {r.enabled ? "Active" : "Paused"}
+            </span>
+          </div>
+          <p className="mt-0.5 text-sm text-muted-foreground">{describeRule(r)}</p>
+        </div>
+        <Button size="icon-xs" variant="ghost" aria-label={r.enabled ? `Pause ${r.name}` : `Resume ${r.name}`} title={r.enabled ? "Pause" : "Resume"} disabled={pending} onClick={() => start(() => toggleRuleAction(r.id, !r.enabled))}>
+          {r.enabled ? <Pause className="size-3.5" strokeWidth={1.5} /> : <Play className="size-3.5" strokeWidth={1.5} />}
         </Button>
-        <Button size="xs" variant="ghost" disabled={pending} onClick={() => start(() => toggleRuleAction(r.id, !r.enabled))}>{r.enabled ? "Pause" : "Resume"}</Button>
-        {confirming ? (
-          <>
-            <Button size="xs" variant="destructive" disabled={pending} onClick={() => start(() => deleteRuleAction(r.id))}>Delete</Button>
-            <Button size="xs" variant="ghost" onClick={() => setConfirming(false)}>Keep</Button>
-          </>
-        ) : (
-          <Button size="icon-xs" variant="ghost" aria-label={`Delete ${r.name}`} onClick={() => setConfirming(true)}><Trash2 className="size-3.5" strokeWidth={1.5} /></Button>
-        )}
-      </span>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+        <span className="text-[11px] text-muted-foreground tabular-nums">
+          <Badge variant="outline" className="mr-2 px-1.5 py-0 text-[10px] font-normal">{KIND_LABELS[r.kind].label}</Badge>
+          {r.firedCount ? <>Sent {r.firedCount.toLocaleString("en-US")}×{r.lastFiredAt ? <>, last <TimeAgo iso={r.lastFiredAt} /></> : null}</> : "Not sent yet"}
+          {r.cooldownSeconds ? <> · quiet {Math.round(r.cooldownSeconds / 60)} min</> : null}
+        </span>
+        <span className="flex items-center gap-1">
+          {confirming ? (
+            <>
+              <span className="mr-1 text-xs text-muted-foreground">Delete this alert?</span>
+              <Button size="xs" variant="destructive" disabled={pending} onClick={() => start(() => deleteRuleAction(r.id))}>Delete</Button>
+              <Button size="xs" variant="ghost" onClick={() => setConfirming(false)}>Keep</Button>
+            </>
+          ) : (
+            <>
+              <Button size="xs" variant="ghost" disabled={pending} title="Send a sample of this alert to your chat" onClick={() => start(async () => setTest(await testRuleAction(r.id)))}>
+                <FlaskConical data-icon="inline-start" className="size-3" strokeWidth={1.5} />Test
+              </Button>
+              <Button size="icon-xs" variant="ghost" aria-label={`Delete ${r.name}`} title="Delete" onClick={() => setConfirming(true)}><Trash2 className="size-3.5" strokeWidth={1.5} /></Button>
+            </>
+          )}
+        </span>
+      </div>
+      <Outcome state={test} />
     </li>
   );
 }
 
-function RulesStep({ bot, rules, prefill }: { bot: AlertBot | null; rules: AlertRule[]; prefill: { site: string | null; playerId: string | null; playerName: string | null } }) {
+function AlertsTab({ bot, rules, prefill, onSettings }: { bot: AlertBot | null; rules: AlertRule[]; prefill: Prefill; onSettings: () => void }) {
   const ready = Boolean(bot?.chatId);
+  const [adding, setAdding] = React.useState(Boolean(prefill.playerId) || rules.length === 0);
+  const active = rules.filter((r) => r.enabled).length;
+  if (!ready) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-start gap-3 py-8">
+          <span className="flex size-10 items-center justify-center rounded-lg bg-muted"><Bell className="size-5 text-muted-foreground" strokeWidth={1.5} /></span>
+          <div>
+            <h2 className="text-base font-medium">Connect a bot first</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Alerts need somewhere to go. Set up your Telegram bot under Bot settings, then come back here.</p>
+          </div>
+          <Button onClick={onSettings}>Open bot settings<Settings2 data-icon="inline-end" className="size-4" strokeWidth={2} /></Button>
+        </CardContent>
+      </Card>
+    );
+  }
   return (
-    <Card className={cn(!ready && "opacity-60")}>
-      <CardHeader className="flex-row items-start gap-3">
-        <StepNumber n={3} done={ready && rules.length > 0} />
-        <div className="flex flex-col gap-1">
-          <CardTitle>Alerts</CardTitle>
-          <CardDescription>Each alert is one condition on a settled bet. Add as many as you like; every match arrives as its own message.</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        {rules.length ? (
-          <ul className="flex flex-col gap-2">{rules.map((r) => <RuleRow key={r.id} r={r} />)}</ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">{ready ? "No alerts yet. Add the first one below." : "Finish the two steps above, then add alerts here."}</p>
-        )}
-        {ready ? <RuleForm prefill={prefill} /> : null}
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {rules.length === 0 ? "No alerts yet." : <>{rules.length} {rules.length === 1 ? "alert" : "alerts"}, {active} active.</>} Delivered to <span className="text-foreground">{bot!.chatTitle}</span> via @{bot!.botUsername}.
+        </p>
+        <Button variant={adding ? "outline" : "default"} onClick={() => setAdding((v) => !v)} aria-expanded={adding}>
+          {adding ? <><X data-icon="inline-start" className="size-4" strokeWidth={2} />Close</> : <><Plus data-icon="inline-start" className="size-4" strokeWidth={2} />New alert</>}
+        </Button>
+      </div>
+      {adding ? (
+        <Card className="gap-0 p-0">
+          <CardHeader className="pt-4 pb-3">
+            <CardTitle>New alert</CardTitle>
+            <CardDescription>One condition on a settled bet. Every match arrives as its own message.</CardDescription>
+          </CardHeader>
+          <CardContent className="pb-4"><RuleForm prefill={prefill} /></CardContent>
+        </Card>
+      ) : null}
+      {rules.length ? (
+        <ul className="grid gap-3 md:grid-cols-2">{rules.map((r) => <RuleCard key={r.id} r={r} />)}</ul>
+      ) : !adding ? (
+        <p className="text-sm text-muted-foreground">Add your first alert with the button above.</p>
+      ) : null}
+    </div>
   );
 }
 
-export function AlertsView({ bot, rules, prefill }: { bot: AlertBot | null; rules: AlertRule[]; prefill: { site: string | null; playerId: string | null; playerName: string | null } }) {
+type Prefill = { site: string | null; playerId: string | null; playerName: string | null };
+
+export function AlertsView({ bot, rules, prefill }: { bot: AlertBot | null; rules: AlertRule[]; prefill: Prefill }) {
+  const ready = Boolean(bot?.chatId);
+  const [tab, setTab] = React.useState(ready ? "alerts" : "settings");
   return (
     <Stagger className="mx-auto flex max-w-4xl flex-col gap-5">
-      <Reveal>
-        <h1 className="text-xl font-semibold tracking-tight">Telegram alerts</h1>
-        <p className="text-sm text-muted-foreground">Your own bot pings you the moment a bet you care about settles. Three steps, about two minutes.</p>
+      <Reveal className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Telegram alerts</h1>
+          <p className="text-sm text-muted-foreground">Your own bot pings you the moment a bet you care about settles.</p>
+        </div>
+        <span className={cn("inline-flex items-center gap-1.5 text-xs", ready ? "text-emerald-400" : "text-muted-foreground")}>
+          <span className={cn("size-1.5 rounded-full", ready ? "bg-emerald-400" : "bg-muted-foreground")} aria-hidden />
+          {ready ? `Connected as @${bot!.botUsername}` : bot ? "Bot saved, chat not connected" : "No bot yet"}
+        </span>
       </Reveal>
-      <Reveal><TokenStep bot={bot} /></Reveal>
-      <Reveal><ChatStep bot={bot} /></Reveal>
-      <Reveal><RulesStep bot={bot} rules={rules} prefill={prefill} /></Reveal>
+      <Reveal>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="mb-4 h-8">
+            <TabsTrigger value="alerts" className="gap-1.5 text-xs"><Bell className="size-3.5" strokeWidth={2} />Alerts{rules.length ? <span className="text-muted-foreground tabular-nums">{rules.length}</span> : null}</TabsTrigger>
+            <TabsTrigger value="settings" className="gap-1.5 text-xs"><Settings2 className="size-3.5" strokeWidth={2} />Bot settings</TabsTrigger>
+          </TabsList>
+          <TabsContent value="alerts"><AlertsTab bot={bot} rules={rules} prefill={prefill} onSettings={() => setTab("settings")} /></TabsContent>
+          <TabsContent value="settings" className="flex flex-col gap-4">
+            <TokenStep bot={bot} />
+            <ChatStep bot={bot} />
+          </TabsContent>
+        </Tabs>
+      </Reveal>
     </Stagger>
   );
 }

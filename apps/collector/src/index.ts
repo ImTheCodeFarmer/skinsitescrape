@@ -5,6 +5,7 @@ import { connectBrowser } from "./core/transport-browser.js";
 import { connectWstap } from "./core/transport-wstap.js";
 import { Sink } from "./core/sink.js";
 import { Alerts } from "./core/alerts.js";
+import { SteamEnricher } from "./core/steam.js";
 import { StatusReporter } from "./core/status.js";
 import { log } from "./core/log.js";
 
@@ -14,6 +15,9 @@ const transportKind = (["socketio", "browser", "wstap"].includes(process.env.TRA
 const connect = { socketio: connectSocketIo, browser: connectBrowser, wstap: connectWstap }[transportKind];
 const { db, close } = createDb();
 const alerts = new Alerts(db);
+// Steam profile enrichment runs alongside the collectors unless switched off; it paces itself under STEAM_RPS / STEAM_DAILY_MAX.
+const steam = process.env.STEAM_ENRICH === "false" ? null : new SteamEnricher(db);
+steam?.start();
 const sink = new Sink(db, { recordRaw: process.env.RECORD_RAW !== "false", onBets: (b) => alerts.onBets(b) });
 
 const running = sites.flatMap((site) => {
@@ -57,6 +61,7 @@ async function shutdown(signal: string) {
   await Promise.all([...new Set(running.map((r) => r.status))].map((s) => s.close()));
   await sink.close();
   await alerts.close();
+  await steam?.close();
   await close();
   process.exit(0);
 }

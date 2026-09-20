@@ -213,6 +213,8 @@ export type LinkEvidence = {
   permanent?: boolean;
   confirmedAt?: string;
   source?: "auto" | "admin";
+  /** The name match used a past Steam alias rather than the name a site shows today. */
+  alias?: boolean;
 };
 
 /** One account on one site. */
@@ -252,4 +254,23 @@ export type PlayerProfile = {
   counted: AccountStats[];
   totals: PlayerTotals;
   combined: { series: PlayerPoint[]; games: GameStat[]; recent: BetRow[] };
+  /** The Steam profile behind the counted accounts, when any of them is Steam-keyed and it has been fetched. */
+  steam: SteamProfile | null;
+};
+
+/** What Steam shows publicly about a Steam-keyed account, refreshed by the collector. */
+export type SteamProfile = {
+  steamId: string;
+  persona: string | null;
+  avatar: string | null;
+  profileUrl: string;
+  visibility: string;
+  country: string | null;
+  accountCreatedAt: string | null;
+  lastLogoffAt: string | null;
+  vacBanned: boolean | null;
+  gameBans: number | null;
+  friendsCount: number | null;
+  aliases: { name: string; seenAt: string | null }[];
+  fetchedAt: string | null;
 };

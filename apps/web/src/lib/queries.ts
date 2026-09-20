@@ -3,7 +3,7 @@ import { sql } from "@casino/db";
 import { db } from "./db";
 import { CASINOS, gameLabel, getCasinoMeta } from "./casinos";
 import { memo, ttlFor } from "./memo";
-import type { Account, AccountStats, BetRow, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, LinkEvidence, LinkedAccount, PlayerPoint, PlayerProfile, PlayerStat, PlayerTotals, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary } from "./types";
+import type { Account, AccountStats, BetRow, SteamProfile, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, LinkEvidence, LinkedAccount, PlayerPoint, PlayerProfile, PlayerStat, PlayerTotals, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary } from "./types";
 
 /** Whether a site has coinflip / jackpot detail (rounds tables, breakdown, pot records). */
 const hasPots = (site: string) => Boolean(getCasinoMeta(site)?.pots);
@@ -753,6 +753,8 @@ export async function playerProfile(site: string, id: string, range: Range): Pro
   if (!anchor) return null;
   const linked = await linkedAccounts(site, id);
   const countedAccounts: Account[] = [anchor, ...linked.filter((l) => l.score >= COUNTED_AT)];
+  const steamIds = [...new Set(countedAccounts.map((a) => a.id).filter((x) => /^7656119[0-9]{10}$/.test(x)))];
+  const steam = steamIds.length ? await steamProfile(steamIds[0]) : null;
   const [totalsBy, series, games, recent, ...perAccount] = await Promise.all([
     accountTotals(countedAccounts, range),
     accountSeries(countedAccounts, range),
@@ -767,5 +769,22 @@ export async function playerProfile(site: string, id: string, range: Range): Pro
     games: perAccount[i][1],
     recent: perAccount[i][2],
   }));
-  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: sumTotals(counted.map((c) => c.totals)), combined: { series, games, recent } };
+  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: sumTotals(counted.map((c) => c.totals)), combined: { series, games, recent }, steam };
+}
+
+/** Steam profile data for a Steam-keyed account, when the collector has fetched it. */
+export async function steamProfile(steamId: string): Promise<SteamProfile | null> {
+  if (!/^7656119[0-9]{10}$/.test(steamId)) return null;
+  const [p, a] = await Promise.all([
+    rows(sql`SELECT * FROM steam_profiles WHERE steam_id = ${steamId}`),
+    rows(sql`SELECT name, seen_at FROM steam_aliases WHERE steam_id = ${steamId} ORDER BY seen_at DESC NULLS LAST, name LIMIT 20`),
+  ]);
+  const x = p[0];
+  if (!x || !x.fetched_at) return null;
+  return {
+    steamId, persona: str(x.persona), avatar: str(x.avatar), profileUrl: str(x.profile_url) ?? `https://steamcommunity.com/profiles/${steamId}`, visibility: str(x.visibility) ?? "unknown",
+    country: str(x.country), accountCreatedAt: x.account_created_at ? iso(x.account_created_at) : null, lastLogoffAt: x.last_logoff_at ? iso(x.last_logoff_at) : null,
+    vacBanned: x.vac_banned == null ? null : Boolean(x.vac_banned), gameBans: x.game_bans == null ? null : Number(x.game_bans), friendsCount: x.friends_count == null ? null : Number(x.friends_count),
+    aliases: a.map((r) => ({ name: String(r.name), seenAt: r.seen_at ? iso(r.seen_at) : null })), fetchedAt: iso(x.fetched_at),
+  };
 }
