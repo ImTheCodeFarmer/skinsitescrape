@@ -33,10 +33,13 @@ export interface SiteAdapter {
      * `graphql-transport-ws` subprotocol, sends `connection_init` and counts
      * the `connection_ack` as the connect; `emit(name, query, variables)`
      * subscribes with `name` as the message id, so every `next` for it
-     * arrives as event `name` with the payload's `data` (csgoroll). Only the
-     * wstap transport speaks "raw", "pair", "envelope" and "graphql".
+     * arrives as event `name` with the payload's `data` (csgoroll).
+     * "socketio-msgpack" is Socket.IO with socket.io-msgpack-parser: the
+     * Engine.IO handshake and pings stay text, every Socket.IO packet is a
+     * binary MessagePack object (rustbattle). Only the wstap transport
+     * speaks "raw", "pair", "envelope", "graphql" and "socketio-msgpack".
      */
-    protocol?: "socketio" | "raw" | "pair" | "envelope" | "graphql";
+    protocol?: "socketio" | "socketio-msgpack" | "raw" | "pair" | "envelope" | "graphql";
   };
   /**
    * Name of this connection when a site runs more than one (cases.gg has a

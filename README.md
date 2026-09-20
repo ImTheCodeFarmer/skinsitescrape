@@ -82,6 +82,12 @@ A `cf_clearance` cookie (`WS_COOKIE` + `WS_UA`) also gets a challenged exit
 through, but it is bound to the minting IP and the pool's sessions rotate
 within minutes, so it is not worth the browser it takes to mint.
 
+`-binary` mode (used for `protocol: "socketio-msgpack"`, RustBattle) emits
+binary frames as `{"b":"<base64>"}`, sends stdin lines `b:<base64>` as binary
+frames, and leaves the Socket.IO connect packet to the collector, which
+encodes it with MessagePack (`core/msgpack.ts`, a small codec covering what
+socket.io-msgpack-parser emits, including notepack's `undefined` extension).
+
 `TRANSPORT=browser` (headed Chrome, taps the page's own websocket) and
 `TRANSPORT=socketio` (plain client) remain as fallbacks for Socket.IO sites;
 only `wstap` speaks the raw protocols CSGOGem, Cases.gg, Bandit.camp and
@@ -382,6 +388,45 @@ Not yet in the score: perceptual hashing of re-hosted avatars (CSGOGem
 serves them through Cloudflare Images, so the URL hash is lost), name
 similarity short of an exact match, and bet-size or time-of-day profiles.
 Anonymous players (stored as "Anonymous") are excluded by the name rule.
+
+## RustBattle
+
+Socket.IO at `wss://api.rustbattle.com/socket.io/` with `x-socket-id` (any
+random id) and `language=en` on the query, using **socket.io-msgpack-parser**:
+the Engine.IO handshake and pings are text, every Socket.IO packet is a
+binary MessagePack object `{type, data, nsp, id?}`. The adapter declares
+`protocol: "socketio-msgpack"`; wstap runs in `-binary` mode and the
+collector sends the connect packet `{type: 0, data: {token: null}, nsp: "/"}`
+itself. Behind Cloudflare; wstap connects without a proxy as of 2026-09-19.
+
+The client asks for a game's state with `<game>:index` and the server
+answers with events of the same name, then keeps pushing that game's
+changes: `crash:index` (full state on every change, `crash:multiplier`
+ticks), `case-battles:store` / `case-battles:update` (the whole battle each
+time: teams, seats, case opens and winners), `coinflip:store` /
+`coinflip:update`. The adapter emits the three `index` requests on connect.
+
+Amounts are integer cents of coins at **$1 per coin**: the site's own
+crypto rates (`crypto:updated`) price USDT at 0.9997 coins. Players are the
+site's user UUIDs.
+
+| Mode | Feed | Settlement | `game` |
+|---|---|---|---|
+| Case battles | `case-battles:update` on `status = "ended"` | Every seat pays `cost` (the case prices for all rounds); a seat's `won` is its payout, already split by the site. Bots (`bot = 1`) are the house, one house player per bot identity. A seat with `borrow_money_amount` was lent money by the site; on the battles read it kept a third of its share and its bot teammate the rest. The stake recorded is still the full `cost`, with the loan in meta, until the site's rule is confirmed. Refunded battles pay the stake back. | `battles` |
+| Coinflip | `coinflip:update` / `coinflip:store` once `winning_side` is set | Each user stakes their items' value (or `amount`); the user on `winning_side` is assumed to take the whole pot (`meta.payoutAssumed`). | `coinflip` |
+| Crash | `crash:index` on `status = "finished"` | Each `crashUsers` entry stakes `amount`; a cash-out multiplier (hundredths) pays stake × multiplier, the rest lose. | `crash` |
+
+The battle settlement was checked against two battles captured from a
+browser. **Coinflip and crash are provisional:** nobody played either while
+the feed was read on 2026-09-19 and 2026-09-20 (Chrome on the site saw the
+same empty rounds), so their per-bet field names come from the client code
+and common usage. Both handlers read the likely names defensively, keep the
+raw entry in meta, and warn once on an unrecognised shape; `reparse
+rustbattle` re-derives everything after a fix.
+
+**Not tracked:** upgrader, tower, mines, plinko, keno, 21 and case openings
+are private games; their pages open no socket channel and nothing about
+them is broadcast.
 
 ## Sign in with Steam
 

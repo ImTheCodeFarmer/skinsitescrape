@@ -278,6 +278,13 @@ func isHex(b []byte) bool {
 	return true
 }
 
+func emitBinary(w *bufio.Writer, data []byte) {
+	b, _ := json.Marshal(map[string]any{"t": time.Now().UnixMilli(), "b": base64.StdEncoding.EncodeToString(data)})
+	w.Write(b)
+	w.WriteByte('\n')
+	w.Flush()
+}
+
 func emit(w *bufio.Writer, data string) {
 	b, _ := json.Marshal(map[string]any{"t": time.Now().UnixMilli(), "d": data})
 	w.Write(b)
@@ -293,6 +300,7 @@ func main() {
 	cookie := flag.String("cookie", os.Getenv("WS_COOKIE"), "Cookie header value (e.g. cf_clearance=...)")
 	ua := flag.String("ua", os.Getenv("WS_UA"), "override User-Agent (must match the browser that minted the cookie)")
 	subprotocol := flag.String("subprotocol", "", "Sec-WebSocket-Protocol to request (e.g. graphql-transport-ws)")
+	binary := flag.Bool("binary", false, "binary mode: binary frames are emitted as {\"b\":base64}, stdin lines \"b:<base64>\" are sent as binary frames, and the socket.io connect packet is left to the caller")
 	flag.Parse()
 
 	var proxy *url.URL
@@ -373,7 +381,16 @@ func main() {
 	fmt.Fprintf(os.Stderr, "connected: %s deflate=%v\n", status, deflate)
 
 	out := bufio.NewWriter(os.Stdout)
-	send := func(s string) error { return wsutil.WriteClientText(conn, []byte(s)) }
+	send := func(s string) error {
+		if *binary && strings.HasPrefix(s, "b:") {
+			b, err := base64.StdEncoding.DecodeString(s[2:])
+			if err != nil {
+				return err
+			}
+			return wsutil.WriteClientBinary(conn, b)
+		}
+		return wsutil.WriteClientText(conn, []byte(s))
+	}
 
 	// stdin -> frames
 	go func() {
@@ -395,6 +412,7 @@ func main() {
 	}{br, conn})
 	var msg bytes.Buffer
 	var compressed bool
+	var isBinary bool
 	// permessage-deflate with context takeover (the default we offer, as Chrome
 	// does): the server's LZ77 window persists across messages, so each message
 	// may back-reference the previous ones' plaintext. Inflating each message
@@ -423,6 +441,7 @@ func main() {
 		case ws.OpText, ws.OpBinary:
 			msg.Reset()
 			compressed = hdr.Rsv1()
+			isBinary = hdr.OpCode == ws.OpBinary
 		}
 		msg.Write(payload)
 		if !hdr.Fin {
@@ -441,11 +460,16 @@ func main() {
 			}
 			data = inflated
 		}
+		if *binary && isBinary {
+			emitBinary(out, data)
+			continue
+		}
 		s := string(data)
-		// engine.io keepalive + socket.io namespace connect
+		// engine.io keepalive + socket.io namespace connect (in binary mode the
+		// caller sends its own, msgpack-encoded connect packet)
 		if s == "2" {
 			send("3")
-		} else if strings.HasPrefix(s, "0{") {
+		} else if strings.HasPrefix(s, "0{") && !*binary {
 			send("40")
 		}
 		emit(out, s)

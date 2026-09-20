@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { Logger } from "pino";
 import type { SiteAdapter } from "./adapter.js";
-import { parseEnvelopeFrame, parseGraphqlFrame, parsePairFrame, parseRawFrame, parseSocketIoFrame } from "./frames.js";
+import { parseEnvelopeFrame, parseGraphqlFrame, parseMsgpackPacket, parsePairFrame, parseRawFrame, parseSocketIoFrame } from "./frames.js";
+import { decode as mpDecode, encode as mpEncode } from "./msgpack.js";
 import type { TransportHooks, Transport } from "./transport.js";
 
 function findBinary(): string {
@@ -50,7 +51,8 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
   const bin = findBinary();
   const { url, path = "/socket.io/", protocol = "socketio", query = {} } = adapter.connection;
   /** Anything but Socket.IO: no Engine.IO handshake. The upgrade itself is the connect, except for graphql, which waits for its own ack. */
-  const raw = protocol !== "socketio";
+  const msgpack = protocol === "socketio-msgpack";
+  const raw = protocol !== "socketio" && !msgpack;
   const graphql = protocol === "graphql";
   const wsUrl = new URL(url);
   if (!raw) {
@@ -83,10 +85,14 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
     }
   };
 
+  /** Socket.IO packet as socket.io-msgpack-parser frames it, sent as one binary websocket message. */
+  const sendBinary = (packet: unknown) => child?.stdin?.write("b:" + mpEncode(packet).toString("base64") + "\n");
+
   function start() {
     if (closed) return;
     const args = ["-url", wsUrl.toString(), "-origin", origin];
     if (graphql) args.push("-subprotocol", "graphql-transport-ws");
+    if (msgpack) args.push("-binary");
     if (proxy) args.push("-proxy", proxy);
     child = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
     lastFrame = Date.now();
@@ -96,9 +102,39 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
     createInterface({ input: child.stdout! }).on("line", (line) => {
       lastFrame = Date.now();
       let d: string;
+      let b: string | undefined;
       try {
-        d = (JSON.parse(line) as { d: string }).d;
+        ({ d, b } = JSON.parse(line) as { d: string; b?: string });
       } catch {
+        return;
+      }
+      if (msgpack) {
+        if (b === undefined) {
+          // Text frames in msgpack mode are Engine.IO only: the handshake opens the namespace with our own, msgpack-encoded CONNECT.
+          if (typeof d === "string" && d.startsWith("0{")) sendBinary({ type: 0, data: { token: null }, nsp: "/" });
+          return;
+        }
+        let packet: ReturnType<typeof parseMsgpackPacket>;
+        try {
+          packet = parseMsgpackPacket(mpDecode(Buffer.from(b, "base64")));
+        } catch (err) {
+          log.warn({ err }, "undecodable msgpack frame");
+          return;
+        }
+        if (!packet) return;
+        if (packet.event === "connect") {
+          if (refusals) log.info({ refusals }, "found a clean proxy exit");
+          refusals = 0;
+          setConnected(true);
+          delay = 2_000;
+          return;
+        }
+        if (packet.event === "connect_error") {
+          log.warn({ data: packet.args[0] }, "socket.io connect_error");
+          hooks.onError("connect_error");
+          return;
+        }
+        hooks.onEvent({ event: packet.event, args: packet.args, receivedAt: new Date() });
         return;
       }
       if (!raw && d.startsWith("40")) {
@@ -191,6 +227,7 @@ export function connectWstap(adapter: SiteAdapter, hooks: TransportHooks, log: L
   return {
     emit: (event, ...args) => {
       if (!child?.stdin?.writable) return;
+      if (msgpack) return void sendBinary({ type: 2, data: [event, ...args], options: { compress: true }, nsp: "/" });
       const frame =
         graphql ? JSON.stringify({ id: event, type: "subscribe", payload: { query: args[0], variables: args[1] ?? {} } })
         : protocol === "envelope" ? JSON.stringify({ a: [event, ...args], i: ++seq })

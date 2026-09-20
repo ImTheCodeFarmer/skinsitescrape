@@ -94,3 +94,27 @@ export function parseEnvelopeFrame(s: string): { event: string; args: unknown[] 
     return null;
   }
 }
+
+/**
+ * Parse a socket.io packet decoded from socket.io-msgpack-parser
+ * (rustbattle): `{type, data, nsp, id?}` with the same packet types as the
+ * JSON parser. CONNECT (0) surfaces as "connect", EVENT (2) as its event
+ * name, ACK (3) as "ack" with the ack id appended, CONNECT_ERROR (4) as
+ * "connect_error". Control types (1 disconnect, 5/6 binary) return null.
+ */
+export function parseMsgpackPacket(o: unknown): { event: string; args: unknown[] } | null {
+  if (!o || typeof o !== "object") return null;
+  const p = o as { type?: number; data?: unknown; id?: number };
+  switch (p.type) {
+    case 0:
+      return { event: "connect", args: p.data === undefined ? [] : [p.data] };
+    case 2:
+      return Array.isArray(p.data) && typeof p.data[0] === "string" ? { event: p.data[0], args: p.data.slice(1) } : null;
+    case 3:
+      return { event: "ack", args: [...(Array.isArray(p.data) ? p.data : [p.data]), p.id] };
+    case 4:
+      return { event: "connect_error", args: [p.data] };
+    default:
+      return null;
+  }
+}
