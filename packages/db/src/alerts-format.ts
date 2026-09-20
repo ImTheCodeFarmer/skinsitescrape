@@ -5,7 +5,30 @@
  */
 export type AlertKind = "big_bet" | "player_bet" | "big_win";
 
-export type AlertBet = { site: string; game: string; playerId: string; playerName: string; wageredUsd: number; payoutUsd: number; won: boolean | null };
+export type AlertBet = { site: string; game: string; playerId: string; playerName: string; wageredUsd: number; payoutUsd: number; won: boolean | null; roundId?: string | null };
+
+/**
+ * Per site and `bets.game`, the page for one round with `{id}` in place of
+ * the round id. Games without one are not linked. The dashboard's site
+ * metadata reads from here too, so alert links and table links agree.
+ */
+export const ROUND_URLS: Record<string, Record<string, string>> = {
+  clash: { battles: "https://clash.gg/battles/{id}" },
+  rustclash: { battles: "https://rustclash.com/battles/{id}" },
+  rustyloot: { battles: "https://rustyloot.gg/battles/{id}" },
+  cases: { battles: "https://cases.gg/case-battles/{id}" },
+  rusteasy: { battles: "https://www.rusteasy.com/casebattles/{id}" },
+  csgogem: { battles: "https://csgogem.com/games/battles/{id}" },
+  banditcamp: { battles: "https://bandit.camp/crate-battles/{id}" },
+  csgoroll: { battles: "https://www.csgoroll.com/battles/{id}" },
+  rustbattle: { battles: "https://rustbattle.com/games/battles/{id}" },
+  rustmagic: { battles: "https://rustmagic.com/case-battles/{id}" },
+};
+
+export function roundUrlFor(site: string, game: string, roundId: string | null | undefined): string | null {
+  const tpl = roundId ? ROUND_URLS[site]?.[game] : undefined;
+  return tpl ? tpl.replace("{id}", encodeURIComponent(roundId!)) : null;
+}
 
 export const SITE_NAMES: Record<string, string> = {
   rustypot: "Rustypot", clash: "Clash.gg", rustclash: "RustClash", rustyloot: "Rustyloot", cases: "Cases.gg", rusteasy: "RustEasy", csgogem: "CSGOGem",
@@ -21,7 +44,11 @@ export function formatAlert(rule: { kind: AlertKind; name: string }, b: AlertBet
   const net = b.payoutUsd - b.wageredUsd;
   const result = b.won == null && net === 0 ? "pushed" : net >= 0 ? `won ${usd(b.payoutUsd)} (+${usd(net)})` : `lost ${usd(-net)}`;
   const webUrl = opts.webUrl?.replace(/\/$/, "");
-  const profile = webUrl ? `\n<a href="${webUrl}/player/${b.site}/${encodeURIComponent(b.playerId)}">Open profile</a>` : "";
+  const links: string[] = [];
+  const bet = roundUrlFor(b.site, b.game, b.roundId);
+  if (bet) links.push(`<a href="${bet}">Open bet</a>`);
+  if (webUrl) links.push(`<a href="${webUrl}/player/${b.site}/${encodeURIComponent(b.playerId)}">Open profile</a>`);
+  const profile = links.length ? "\n" + links.join(" · ") : "";
   return (
     (opts.test ? "🧪 <i>Test alert. A real one looks like this.</i>\n\n" : "") +
     `🎲 <b>${esc(KIND_LABEL[rule.kind])}</b> · ${esc(rule.name)}\n` +

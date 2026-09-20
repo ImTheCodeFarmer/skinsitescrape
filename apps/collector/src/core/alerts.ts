@@ -107,7 +107,7 @@ export class Alerts {
     const ins = (await this.db.execute(sql`INSERT INTO alert_deliveries (rule_id, key) VALUES (${r.id}, ${key}) ON CONFLICT DO NOTHING RETURNING rule_id`)) as unknown as unknown[];
     if (!ins.length) return; // already sent for this bet
     const name = await this.playerName(b.site, b.playerId);
-    const text = formatAlert(r, { site: b.site, game: b.game, playerId: b.playerId, playerName: name, wageredUsd: b.wageredUsd, payoutUsd: b.payoutUsd, won: b.won ?? null }, { webUrl: this.webUrl });
+    const text = formatAlert(r, { site: b.site, game: b.game, playerId: b.playerId, playerName: name, wageredUsd: b.wageredUsd, payoutUsd: b.payoutUsd, won: b.won ?? null, roundId: b.roundId ?? null }, { webUrl: this.webUrl });
     const res = await fetch(`https://api.telegram.org/bot${r.token}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -1,8 +1,8 @@
 import "server-only";
-import { decryptSecret, encryptSecret, formatAlert, sql } from "@casino/db";
+import { decryptSecret, encryptSecret, formatAlert, ROUND_URLS, sql } from "@casino/db";
 import { db } from "./db";
-import { CASINOS } from "./casinos";
-import { KIND_LABELS, type AlertBot, type AlertRule, type RuleKind } from "./alerts-shared";
+import { CASINOS, gameLabel } from "./casinos";
+import { KIND_LABELS, type AlertBot, type AlertRule, type FoundPlayer, type PlayerFilters, type RuleKind } from "./alerts-shared";
 export * from "./alerts-shared";
 
 type Row = Record<string, unknown>;
@@ -153,6 +153,7 @@ export async function testRule(steamId: string, id: number): Promise<{ ok: true 
   const text = formatAlert(r, {
     site, game, playerId: r.playerId ?? "76561198000000000", playerName: r.playerName ?? (r.kind === "player_bet" ? r.playerId ?? "Player" : "SamplePlayer"),
     wageredUsd: Math.round(wagered), payoutUsd: Math.round(payout), won: true,
+    roundId: ROUND_URLS[site]?.[game] ? "sample" : null,
   }, { webUrl: process.env.NEXT_PUBLIC_SITE_URL ?? process.env.PUBLIC_WEB_URL ?? null, test: true });
   const res = await tg(token, "sendMessage", { chat_id: bot.chatId, text, parse_mode: "HTML", disable_web_page_preview: true });
   if (!res.ok) {
@@ -160,4 +161,37 @@ export async function testRule(steamId: string, id: number): Promise<{ ok: true 
     return { ok: false, error: `Telegram said: ${res.description ?? "send failed"}` };
   }
   return { ok: true };
+}
+
+/**
+ * Players matching a set of filters over the last 30 days of the daily
+ * rollup: name or id search, one site, favourite game (the game they wager
+ * most on), a minimum average bet, sorted as asked. At most 30 rows.
+ */
+export async function findPlayers(f: PlayerFilters): Promise<FoundPlayer[]> {
+  const q = f.q.trim();
+  const order =
+    f.sort === "avg_bet" ? sql`avg_bet DESC` : f.sort === "bets" ? sql`bets DESC` : f.sort === "last_active" ? sql`last_active DESC, wagered DESC` : sql`wagered DESC`;
+  const r = await rows(sql`
+    WITH agg AS (
+      SELECT d.site, d.player_id, sum(d.wagered_usd) wagered, sum(d.bets) bets, max(d.bucket) last_active, count(DISTINCT d.bucket) active_days,
+             (array_agg(d.game ORDER BY d.wagered_usd DESC))[1] favorite
+      FROM player_daily d
+      JOIN players p ON p.site = d.site AND p.external_id = d.player_id AND NOT p.is_house
+      WHERE d.bucket >= now() - interval '30 days'
+        ${f.site ? sql`AND d.site = ${f.site}` : sql``}
+        ${q ? sql`AND (p.display_name ILIKE ${"%" + q + "%"} OR p.external_id = ${q})` : sql``}
+      GROUP BY d.site, d.player_id
+    ),
+    s AS (SELECT *, CASE WHEN bets > 0 THEN wagered / bets ELSE 0 END avg_bet FROM agg)
+    SELECT s.*, p.display_name, p.avatar FROM s JOIN players p ON p.site = s.site AND p.external_id = s.player_id
+    WHERE true
+      ${f.game ? sql`AND s.favorite = ${f.game}` : sql``}
+      ${f.minAvgBet ? sql`AND s.avg_bet >= ${f.minAvgBet}` : sql``}
+    ORDER BY ${order} LIMIT 30`);
+  return r.map((x) => ({
+    site: String(x.site), id: String(x.player_id), handle: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar),
+    wagered: Number(x.wagered) || 0, bets: Number(x.bets) || 0, avgBet: Number(x.avg_bet) || 0,
+    favorite: gameLabel(String(x.favorite ?? "")), favoriteKey: String(x.favorite ?? ""), lastActive: new Date(x.last_active as string).toISOString(), activeDays: Number(x.active_days) || 0,
+  }));
 }

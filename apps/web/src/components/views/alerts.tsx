@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Reveal, Stagger } from "@/components/reveal";
 import { TimeAgo } from "@/components/time-ago";
+import { PlayerFinder } from "@/components/player-finder";
 import { CASINOS, GAME_LABELS } from "@/lib/casinos";
 import { describeRule, KIND_LABELS, type AlertBot, type AlertRule, type RuleKind } from "@/lib/alerts-shared";
 import { connectChatAction, createRuleAction, deleteRuleAction, removeBotAction, saveTokenAction, sendTestAction, testRuleAction, toggleRuleAction, type ActionState } from "@/app/alerts/actions";
@@ -168,12 +169,16 @@ function ChatStep({ bot }: { bot: AlertBot | null }) {
 function RuleForm({ prefill }: { prefill: { site: string | null; playerId: string | null; playerName: string | null } }) {
   const [state, act, pending] = useActionState(createRuleAction, null);
   const [kind, setKind] = React.useState<RuleKind>(prefill.playerId ? "player_bet" : "big_bet");
+  const [site, setSite] = React.useState(prefill.site ?? "");
+  const [playerId, setPlayerId] = React.useState(prefill.playerId ?? "");
+  const [name, setName] = React.useState(prefill.playerName ? `${prefill.playerName} bets` : "");
+  const [picked, setPicked] = React.useState<string | null>(prefill.playerName ?? null);
   const games = Object.entries(GAME_LABELS).sort((a, b) => a[1].localeCompare(b[1]));
   return (
     <form action={act} className="flex flex-col gap-4 rounded-lg p-4 shadow-border">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name" hint="Shown at the top of each message.">
-          <Input name="name" required maxLength={60} defaultValue={prefill.playerName ? `${prefill.playerName} bets` : ""} placeholder="Whales on Rustypot" />
+          <Input name="name" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} placeholder="Whales on Rustypot" />
         </Field>
         <Field label="Watch for" hint={KIND_LABELS[kind].hint}>
           <Select name="kind" value={kind} onChange={(e) => setKind(e.target.value as RuleKind)}>
@@ -181,7 +186,7 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
           </Select>
         </Field>
         <Field label={kind === "player_bet" ? "Site" : "Site (optional)"}>
-          <Select name="site" defaultValue={prefill.site ?? ""} required={kind === "player_bet"}>
+          <Select name="site" value={site} onChange={(e) => setSite(e.target.value)} required={kind === "player_bet"}>
             <option value="">Any site</option>
             {CASINOS.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
           </Select>
@@ -193,8 +198,14 @@ function RuleForm({ prefill }: { prefill: { site: string | null; playerId: strin
           </Select>
         </Field>
         {kind === "player_bet" ? (
-          <Field label="Player id" hint="The id in the player's profile URL. Open a profile and use its Alert me button to fill this in.">
-            <Input name="playerId" required defaultValue={prefill.playerId ?? ""} className="font-mono" placeholder="76561198…" />
+          <Field label="Player" hint={picked ? `Following ${picked}.` : "Search by name, site, favourite game or bet size, or paste an id from a profile URL."}>
+            <div className="flex gap-2">
+              <Input name="playerId" required value={playerId} onChange={(e) => { setPlayerId(e.target.value); setPicked(null); }} className="font-mono" placeholder="76561198…" />
+              <PlayerFinder
+                initialSite={site || null}
+                onPick={(p) => { setSite(p.site); setPlayerId(p.id); setPicked(p.handle); if (!name.trim()) setName(`${p.handle} bets`); }}
+              />
+            </div>
           </Field>
         ) : null}
         {kind === "big_win" ? (

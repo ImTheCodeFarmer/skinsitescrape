@@ -15,6 +15,11 @@
       "source": "./src/schema.ts",
       "types": "./dist/schema.d.ts",
       "default": "./dist/schema.js"
+    },
+    "./alerts-format": {
+      "source": "./src/alerts-format.ts",
+      "types": "./dist/alerts-format.d.ts",
+      "default": "./dist/alerts-format.js"
     }
   },
   "scripts": {

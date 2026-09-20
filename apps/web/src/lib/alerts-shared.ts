@@ -24,3 +24,12 @@ export function describeRule(r: AlertRule): string {
     case "big_win": return `Any net win of ${usd(r.minNetWin ?? 0)} or more${game} at ${site}`;
   }
 }
+
+// ---------------------------------------------------------------- player finder
+export type PlayerSort = "wagered" | "avg_bet" | "bets" | "last_active";
+export type PlayerFilters = { site: string | null; q: string; game: string | null; minAvgBet: number | null; sort: PlayerSort };
+export type FoundPlayer = {
+  site: string; id: string; handle: string; avatar: string | null;
+  wagered: number; bets: number; avgBet: number; favorite: string; favoriteKey: string; lastActive: string; activeDays: number;
+};
+export const PLAYER_SORTS: Record<PlayerSort, string> = { wagered: "Most wagered", avg_bet: "Largest average bet", bets: "Most bets", last_active: "Most recently active" };

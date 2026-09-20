@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getSession, isAdmin } from "@/lib/auth";
-import { connectChat, createRule, deleteRule, removeBot, saveToken, sendTest, setRuleEnabled, testRule, validateRule, type RuleInput, type RuleKind } from "@/lib/alerts";
+import { connectChat, createRule, deleteRule, findPlayers, removeBot, saveToken, sendTest, setRuleEnabled, testRule, validateRule, type RuleInput, type RuleKind } from "@/lib/alerts";
+import type { FoundPlayer, PlayerFilters } from "@/lib/alerts-shared";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string } | null;
 
@@ -95,4 +96,9 @@ export async function testRuleAction(id: number): Promise<ActionState> {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Something went wrong" };
   }
+}
+
+export async function findPlayersAction(f: PlayerFilters): Promise<FoundPlayer[]> {
+  await owner();
+  return findPlayers({ site: f.site || null, q: String(f.q ?? "").slice(0, 60), game: f.game || null, minAvgBet: f.minAvgBet && f.minAvgBet > 0 ? f.minAvgBet : null, sort: f.sort });
 }
