@@ -100,7 +100,7 @@ export function CasinoView(initial: CasinoData) {
             <KpiCard label="Wagered" value={s.wagered} format={money} accent={casino.color} />
             <KpiCard label="Player wins" value={s.playerWins} format={money} hint="Taken home by players on winning bets, net of stake" tone="good" />
             <KpiCard label="Player losses" value={s.playerLosses} format={money} hint="Stakes lost on losing bets" tone="bad" />
-            <KpiCard label="Net" value={s.net} format={money} delta={s.deltaNet ?? undefined} hint={s.wagered ? `${((s.net / s.wagered) * 100).toFixed(2)}% realized edge` : undefined} />
+            <KpiCard label="Net" value={s.net} format={money} hint={s.wagered ? `${((s.net / s.wagered) * 100).toFixed(2)}% realized edge` : undefined} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-5">

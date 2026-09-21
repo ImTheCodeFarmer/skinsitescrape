@@ -182,6 +182,8 @@ export type BetRow = {
 /** One live tick for a casino page: the moving buckets, the small aggregates, and rounds newer than the client's cursor. */
 export type LiveCasino = {
   at: string;
+  /** Collector connection and last event time, so the header badge stays current. */
+  status: SiteStatus | null;
   summary: Summary;
   tail: Point[];
   games: GameStat[];

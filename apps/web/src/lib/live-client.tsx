@@ -51,9 +51,26 @@ const newest = (flips: CoinflipRound[], pots: JackpotRound[], bets: BetRow[], fa
  * each tick asks only for today's buckets, the small aggregates and rounds
  * newer than the newest one we hold, then merges them in place.
  */
+/**
+ * A fresh server render (navigation, or ResumeRefresh after the tab was
+ * hidden) must replace what the cache accumulated: its tails cannot
+ * backfill buckets missed while polling was paused.
+ */
+function useResetOnRender<T extends { renderedAt: string }>(key: unknown[], initial: T) {
+  const qc = useQueryClient();
+  const seen = React.useRef(initial.renderedAt);
+  React.useEffect(() => {
+    if (seen.current === initial.renderedAt) return;
+    seen.current = initial.renderedAt;
+    qc.setQueryData<T>(key, initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial.renderedAt]);
+}
+
 export function useLiveCasino(initial: CasinoData): CasinoData {
   const qc = useQueryClient();
   const key = [LIVE_KEY, "casino", initial.meta.slug, initial.range];
+  useResetOnRender(key, initial);
   const q = useQuery<CasinoData>({
     queryKey: key,
     enabled: initial.tracked && !!initial.summary && !initial.locked,
@@ -68,6 +85,7 @@ export function useLiveCasino(initial: CasinoData): CasinoData {
       return {
         ...prev,
         renderedAt: t.at,
+        status: t.status,
         summary: t.summary,
         series: mergeSeries(prev.series, t.tail, prev.range),
         games: t.games,
@@ -86,6 +104,7 @@ export function useLiveCasino(initial: CasinoData): CasinoData {
 export function useLiveOverview(initial: OverviewData): OverviewData {
   const qc = useQueryClient();
   const key = [LIVE_KEY, "overview", initial.range];
+  useResetOnRender(key, initial);
   const q = useQuery<OverviewData>({
     queryKey: key,
     enabled: !initial.locked,

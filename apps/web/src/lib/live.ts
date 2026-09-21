@@ -1,6 +1,6 @@
 import "server-only";
 import { getCasinoMeta } from "./casinos";
-import { betsSince, highlights, profitBreakdown, roundsSince, seriesTail, siteCards, summary, topGames, topPlayers } from "./queries";
+import { betsSince, highlights, profitBreakdown, roundsSince, seriesTail, siteCards, statuses, summary, topGames, topPlayers } from "./queries";
 import type { LiveCasino, LiveOverview, Range } from "./types";
 
 /**
@@ -11,7 +11,7 @@ import type { LiveCasino, LiveOverview, Range } from "./types";
  */
 export async function liveCasino(site: string, range: Range, since: string): Promise<LiveCasino> {
   const pots = Boolean(getCasinoMeta(site)?.pots);
-  const [s, tail, games, players, breakdown, records, rounds, bets] = await Promise.all([
+  const [s, tail, games, players, breakdown, records, rounds, bets, st] = await Promise.all([
     summary(site, range),
     seriesTail(site, range),
     topGames(site, range),
@@ -20,8 +20,9 @@ export async function liveCasino(site: string, range: Range, since: string): Pro
     highlights(site, range),
     pots ? roundsSince(site, range, since) : { flips: [], pots: [] },
     pots ? [] : betsSince(site, range, since),
+    statuses(),
   ]);
-  return { at: new Date().toISOString(), summary: s, tail, games, players, breakdown, records, flips: rounds.flips, pots: rounds.pots, bets };
+  return { at: new Date().toISOString(), status: st[site] ?? null, summary: s, tail, games, players, breakdown, records, flips: rounds.flips, pots: rounds.pots, bets };
 }
 
 export async function liveOverview(range: Range): Promise<LiveOverview> {
