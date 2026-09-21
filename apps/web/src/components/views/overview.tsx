@@ -83,7 +83,7 @@ export function OverviewView(initial: OverviewData) {
       </Reveal>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total wagered" value={s.wagered} format={money} delta={s.deltaWager ?? undefined} hint={s.bets ? `${count(s.bets)} bets · ${money(s.wagered / s.bets)} average bet` : `${count(s.bets)} bets`} />
+        <KpiCard label="Total wagered" value={s.wagered} format={money} hint={s.bets ? `${count(s.bets)} bets · ${money(s.wagered / s.bets)} average bet` : `${count(s.bets)} bets`} />
         <KpiCard label="House profit" value={s.profit} format={money} hint={range === 1 ? "House take across winning hours" : "House take across winning days"} tone="good" />
         <KpiCard label="Players" value={s.players} format={count} hint={s.players ? `${(s.bets / s.players).toFixed(1)} bets per player` : "No settled bets yet"} />
         <KpiCard label="Net" value={s.net} format={money} delta={s.deltaNet ?? undefined} hint={`${s.rtp.toFixed(1)}% returned to players`} />

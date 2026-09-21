@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/sidebar";
 import { CasinoLogo } from "@/components/casino-logo";
 import { Sparkline } from "@/components/sparkline";
-import { moneyShort, pct } from "@/lib/format";
+import { moneyShort } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { SiteCard } from "@/lib/types";
 
@@ -110,11 +110,6 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
                               {tracked && s ? `${moneyShort(s.wagered)} wagered` : "not tracked yet"}
                             </span>
                           </span>
-                          {tracked && s?.deltaWager != null ? (
-                            <span className={cn("text-[11px] font-medium tabular-nums", s.deltaWager >= 0 ? "text-emerald-400" : "text-rose-400")}>
-                              {pct(s.deltaWager, 0)}
-                            </span>
-                          ) : null}
                         </span>
                         {tracked ? (
                           <span className="pl-9 pr-1 opacity-80">
