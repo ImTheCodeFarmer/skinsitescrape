@@ -305,9 +305,11 @@ export class Sink {
         ON CONFLICT DO NOTHING`));
     }
     if (bets.length) {
+      // A bet by an admin-marked player (players.is_admin, migration 0017) is stored with is_house so no aggregate counts it.
       await this.write("bets", bets, () => this.db.execute(sql`
         INSERT INTO bets (site, game, external_id, round_id, player_id, is_house, wagered_usd, payout_usd, won, placed_at, settled_at, meta)
-        SELECT * FROM json_to_recordset(${j(
+        SELECT x.site, x.game, x.external_id, x.round_id, x.player_id, x.is_house OR coalesce(p.is_admin, false), x.wagered_usd, x.payout_usd, x.won, x.placed_at, x.settled_at, x.meta
+        FROM json_to_recordset(${j(
           bets.map((b) => ({
             site: b.site, game: b.game, external_id: b.externalId, round_id: b.roundId ?? null, player_id: b.playerId,
             is_house: b.isHouse ?? false, wagered_usd: b.wageredUsd, payout_usd: b.payoutUsd, won: b.won ?? null,
@@ -315,6 +317,7 @@ export class Sink {
           })),
         )}::json) AS x(site text, game text, external_id text, round_id text, player_id text, is_house boolean,
           wagered_usd numeric, payout_usd numeric, won boolean, placed_at timestamptz, settled_at timestamptz, meta jsonb)
+        LEFT JOIN players p ON p.site = x.site AND p.external_id = x.player_id
         ON CONFLICT (site, game, external_id, placed_at) DO UPDATE SET
           payout_usd = EXCLUDED.payout_usd,
           won        = EXCLUDED.won,

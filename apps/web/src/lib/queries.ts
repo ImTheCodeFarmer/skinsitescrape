@@ -298,16 +298,23 @@ async function recentJackpotsQuery(site: string, range: Range, limit: number, si
 
 const iso = (v: unknown) => new Date(v as string).toISOString();
 
-export const recentBets = (site: string, range: Range, limit = 25) => memo(`bets:${site}:${range}:${limit}`, ttlFor(range), () => recentBetsQuery(site, range, limit));
+/**
+ * Settled bets by real players, newest first. Bets by admin-marked players
+ * (stored with is_house, see lib/admin-players.ts) are hidden like the
+ * bots' unless `showAdmin`, which the pages set for dashboard admins; the
+ * rows then carry the mark.
+ */
+export const recentBets = (site: string, range: Range, showAdmin = false, limit = 25) => memo(`bets:${site}:${range}:${limit}:${showAdmin ? "admin" : "public"}`, ttlFor(range), () => recentBetsQuery(site, range, limit, showAdmin));
 /** Bets settled after `since`, newest first. Uncached: it is the live tail. */
-export const betsSince = (site: string, range: Range, since: string, limit = 25) => recentBetsQuery(site, range, limit, since);
-async function recentBetsQuery(site: string, range: Range, limit: number, since?: string): Promise<BetRow[]> {
+export const betsSince = (site: string, range: Range, since: string, showAdmin = false, limit = 25) => recentBetsQuery(site, range, limit, showAdmin, since);
+async function recentBetsQuery(site: string, range: Range, limit: number, showAdmin: boolean, since?: string): Promise<BetRow[]> {
   const hours = range === 1 ? 24 : range * 24;
   const sinceFilter = since ? sql`AND b.settled_at > ${since}::timestamptz` : sql``;
+  const houseFilter = showAdmin ? sql`(NOT b.is_house OR p.is_admin)` : sql`NOT b.is_house`;
   const r = await rows(sql`
-    SELECT b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar
+    SELECT b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar, p.is_admin
     FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
-    WHERE b.site = ${site} AND NOT b.is_house AND b.settled_at IS NOT NULL
+    WHERE b.site = ${site} AND ${houseFilter} AND b.settled_at IS NOT NULL
       AND b.placed_at >= now() - make_interval(hours => ${hours}) - interval '1 day' AND b.settled_at >= now() - make_interval(hours => ${hours}) ${sinceFilter}
     ORDER BY b.settled_at DESC LIMIT ${limit}`);
   return r.map((x) => ({
@@ -316,7 +323,7 @@ async function recentBetsQuery(site: string, range: Range, limit: number, since?
     roundId: str(x.round_id),
     placedAt: iso(x.placed_at),
     settledAt: iso(x.settled_at),
-    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar) },
+    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar), ...(showAdmin ? { admin: Boolean(x.is_admin) } : {}) },
     wagered: n(x.wagered_usd),
     payout: n(x.payout_usd),
     won: x.won == null ? null : Boolean(x.won),
@@ -602,12 +609,13 @@ const accountOf = (x: Row): Account => ({
   id: String(x.external_id),
   handle: str(x.display_name) ?? String(x.external_id),
   avatar: str(x.avatar),
+  admin: Boolean(x.is_admin),
   firstSeen: x.first_seen ? iso(x.first_seen) : null,
   lastSeen: x.last_seen ? iso(x.last_seen) : null,
 });
 
 export async function account(site: string, id: string): Promise<Account | null> {
-  const r = await rows(sql`SELECT site, external_id, display_name, avatar, first_seen, last_seen FROM players WHERE site = ${site} AND external_id = ${id} AND NOT is_house`);
+  const r = await rows(sql`SELECT site, external_id, display_name, avatar, is_admin, first_seen, last_seen FROM players WHERE site = ${site} AND external_id = ${id} AND NOT is_house`);
   return r[0] ? accountOf(r[0]) : null;
 }
 
@@ -630,7 +638,7 @@ export async function linkedAccounts(site: string, id: string): Promise<LinkedAc
       SELECT site, player, max(score) AS score, (array_agg(evidence ORDER BY score DESC, hops))[1] AS evidence, min(hops) AS hops
       FROM walk GROUP BY site, player
     )
-    SELECT b.site, b.player AS external_id, b.score, b.evidence, b.hops, p.display_name, p.avatar, p.first_seen, p.last_seen
+    SELECT b.site, b.player AS external_id, b.score, b.evidence, b.hops, p.display_name, p.avatar, p.is_admin, p.first_seen, p.last_seen
     FROM best b JOIN players p ON p.site = b.site AND p.external_id = b.player
     ORDER BY b.score DESC, p.last_seen DESC`);
   return r.map((x) => ({ ...accountOf(x), score: n(x.score), evidence: x.evidence as LinkEvidence, hops: n(x.hops) }));
@@ -712,14 +720,18 @@ async function accountGames(accounts: Account[], range: Range): Promise<GameStat
   return r.map((x) => ({ name: gameLabel(String(x.game)), wagered: n(x.wagered), plays: n(x.plays), net: n(x.net) }));
 }
 
-/** Newest settled bets by a set of accounts. Rows carry the site so a mixed list can link each round to its site. */
+/**
+ * Newest settled bets by a set of accounts. Rows carry the site so a mixed
+ * list can link each round to its site. An admin-marked account's bets are
+ * listed (the profile is admin-only) even though its totals above are empty.
+ */
 async function accountBets(accounts: Account[], range: Range, limit = 25): Promise<(BetRow & { site: string })[]> {
   if (!accounts.length) return [];
   const hours = range === 1 ? 24 : range * 24;
   const r = await rows(sql`
-    SELECT b.site, b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar
+    SELECT b.site, b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar, p.is_admin
     FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
-    WHERE NOT b.is_house AND b.settled_at IS NOT NULL AND ${accountFilter(accounts, "b")}
+    WHERE (NOT b.is_house OR p.is_admin) AND b.settled_at IS NOT NULL AND ${accountFilter(accounts, "b")}
       AND b.placed_at >= now() - make_interval(hours => ${hours}) - interval '1 day' AND b.settled_at >= now() - make_interval(hours => ${hours})
     ORDER BY b.settled_at DESC LIMIT ${limit}`);
   return r.map((x) => ({
@@ -729,7 +741,7 @@ async function accountBets(accounts: Account[], range: Range, limit = 25): Promi
     roundId: str(x.round_id),
     placedAt: iso(x.placed_at),
     settledAt: iso(x.settled_at),
-    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar) },
+    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar), admin: Boolean(x.is_admin) },
     wagered: n(x.wagered_usd),
     payout: n(x.payout_usd),
     won: x.won == null ? null : Boolean(x.won),

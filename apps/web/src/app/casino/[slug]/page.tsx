@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Locked } from "@/components/locked";
 import { CasinoView } from "@/components/views/casino";
-import { getSession, rangeNeedsSignIn } from "@/lib/auth";
+import { getSession, isAdmin, rangeNeedsSignIn } from "@/lib/auth";
 import { sampleCasino } from "@/lib/sample";
 import { CASINOS, getCasinoMeta } from "@/lib/casinos";
 import { highlights, parseRange, profitBreakdown, recentBets, recentCoinflips, recentJackpots, series, statuses, summary, topGames, topPlayers, trackedSites } from "@/lib/queries";
@@ -24,7 +24,8 @@ export default async function Page({ params, searchParams }: Props) {
   const meta = getCasinoMeta(slug);
   if (!meta) notFound();
   const range = parseRange(sp.range);
-  if (rangeNeedsSignIn(range) && !(await getSession())) {
+  const session = await getSession();
+  if (rangeNeedsSignIn(range) && !session) {
     return (
       <Locked range={range}>
         <CasinoView {...sampleCasino(meta, range)} />
@@ -43,7 +44,7 @@ export default async function Page({ params, searchParams }: Props) {
     topGames(slug, range),
     hasPots ? recentCoinflips(slug, range) : [],
     hasPots ? recentJackpots(slug, range) : [],
-    hasPots ? [] : recentBets(slug, range),
+    hasPots ? [] : recentBets(slug, range, isAdmin(session)),
     hasPots ? profitBreakdown(slug, range) : null,
     highlights(slug, range),
   ]);

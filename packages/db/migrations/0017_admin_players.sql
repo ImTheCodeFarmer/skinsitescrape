@@ -1,0 +1,15 @@
+-- Admin-marked players. A site's owner or staff can bet with money that was
+-- never deposited, so their play says nothing about the site's profit. The
+-- dashboard lets an admin right-click any player and mark them; their bets
+-- are still collected but stop counting.
+--
+-- Exclusion reuses bets.is_house, which every continuous aggregate already
+-- filters on, so no aggregate has to be recreated: marking a player sets
+-- is_house on their existing bets (and refreshes the aggregates over that
+-- span), and the collector writes new bets by a marked player with is_house
+-- from the start. players.is_house stays false for them, so unlike the
+-- house bots they keep a profile page and show in bet lists (to admins)
+-- with an "admin" tag. Unmarking clears is_house on their bets again, which
+-- is safe because the bots' bets belong to players whose own is_house is
+-- true. See apps/web/src/lib/admin-players.ts.
+ALTER TABLE players ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false;

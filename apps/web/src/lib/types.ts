@@ -173,7 +173,8 @@ export type BetRow = {
   roundId: string | null;
   placedAt: string;
   settledAt: string;
-  player: { id: string; name: string; avatar: string | null };
+  /** `admin`: the player is admin-marked, so this bet counts toward no total. Only set for admin viewers. */
+  player: { id: string; name: string; avatar: string | null; admin?: boolean };
   wagered: number;
   payout: number;
   won: boolean | null;
@@ -220,7 +221,8 @@ export type LinkEvidence = {
 };
 
 /** One account on one site. */
-export type Account = { site: string; id: string; handle: string; avatar: string | null; firstSeen: string | null; lastSeen: string | null };
+/** `admin`: marked as an admin of the site; bets are logged but excluded from every total. */
+export type Account = { site: string; id: string; handle: string; avatar: string | null; admin: boolean; firstSeen: string | null; lastSeen: string | null };
 
 /** Another account we believe belongs to the same person, with how sure we are. */
 export type LinkedAccount = Account & {

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSession, rangeNeedsSignIn } from "@/lib/auth";
+import { getSession, isAdmin, rangeNeedsSignIn } from "@/lib/auth";
 import { getCasinoMeta } from "@/lib/casinos";
 import { liveCasino, liveOverview } from "@/lib/live";
 import { parseRange, trackedSites } from "@/lib/queries";
@@ -19,10 +19,11 @@ export async function GET(req: NextRequest) {
   const range = parseRange(q.get("range") ?? undefined);
   const sinceRaw = q.get("since");
   const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw).toISOString() : new Date().toISOString();
-  if (rangeNeedsSignIn(range) && !(await getSession())) return NextResponse.json({ error: "sign in to view this range" }, { status: 401, headers: NO_STORE });
+  const session = await getSession();
+  if (rangeNeedsSignIn(range) && !session) return NextResponse.json({ error: "sign in to view this range" }, { status: 401, headers: NO_STORE });
 
   if (site === "all") return NextResponse.json(await liveOverview(range), { headers: NO_STORE });
   if (!getCasinoMeta(site)) return NextResponse.json({ error: "unknown site" }, { status: 404, headers: NO_STORE });
   if (!(await trackedSites()).includes(site)) return NextResponse.json({ error: "site not tracked" }, { status: 404, headers: NO_STORE });
-  return NextResponse.json(await liveCasino(site, range, since), { headers: NO_STORE });
+  return NextResponse.json(await liveCasino(site, range, since, isAdmin(session)), { headers: NO_STORE });
 }

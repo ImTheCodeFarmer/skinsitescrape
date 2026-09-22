@@ -9,7 +9,7 @@ import type { LiveCasino, LiveOverview, Range } from "./types";
  * client's cursor, so a tick costs a few milliseconds of database time and a
  * few kilobytes on the wire no matter how long the range is.
  */
-export async function liveCasino(site: string, range: Range, since: string): Promise<LiveCasino> {
+export async function liveCasino(site: string, range: Range, since: string, showAdmin = false): Promise<LiveCasino> {
   const pots = Boolean(getCasinoMeta(site)?.pots);
   const [s, tail, games, players, breakdown, records, rounds, bets, st] = await Promise.all([
     summary(site, range),
@@ -19,7 +19,7 @@ export async function liveCasino(site: string, range: Range, since: string): Pro
     pots ? profitBreakdown(site, range) : null,
     highlights(site, range),
     pots ? roundsSince(site, range, since) : { flips: [], pots: [] },
-    pots ? [] : betsSince(site, range, since),
+    pots ? [] : betsSince(site, range, since, showAdmin),
     statuses(),
   ]);
   return { at: new Date().toISOString(), status: st[site] ?? null, summary: s, tail, games, players, breakdown, records, flips: rounds.flips, pots: rounds.pots, bets };

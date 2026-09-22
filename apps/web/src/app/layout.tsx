@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { ResumeRefresh } from "@/components/resume-refresh";
+import { ViewerProvider } from "@/components/viewer";
 import { getSession, isAdmin } from "@/lib/auth";
 import { LiveProvider } from "@/lib/live-client";
 import { siteCards } from "@/lib/queries";
@@ -24,15 +25,17 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Sidebar always shows the last 7 days, independent of the page's range.
   const [sites, session] = await Promise.all([siteCards(7), getSession()]);
   const anyConnected = sites.some((s) => s.status?.connected);
+  const admin = isAdmin(session);
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}>
       <body className="min-h-full">
         <LiveProvider>
+        <ViewerProvider admin={admin}>
         <ResumeRefresh />
         <TooltipProvider>
           <SidebarProvider>
             <Suspense>
-              <AppSidebar sites={sites} admin={isAdmin(session)} />
+              <AppSidebar sites={sites} admin={admin} />
             </Suspense>
             <SidebarInset className="min-w-0">
               <Suspense>
@@ -42,6 +45,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </SidebarInset>
           </SidebarProvider>
         </TooltipProvider>
+        </ViewerProvider>
         </LiveProvider>
       </body>
     </html>

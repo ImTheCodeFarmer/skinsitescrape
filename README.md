@@ -548,6 +548,25 @@ defaults to the owner's id in `lib/auth.ts`) can open it; everyone else gets
 a 404, and the sidebar shows the Admin link only to them. Migration
 `0010_site_users.sql` creates the table.
 
+**Admin players.** A site's owner or staff can bet with money that was never
+deposited, so their play says nothing about the site's profit. A dashboard
+admin can right-click any player name (bet lists, leaderboards, profiles)
+and choose *Mark as admin*; the "Admin players" tab of `/admin` lists the
+marked accounts and unmarks them. Marked players' bets are still collected
+and shown to admins with an `admin` tag, but count toward no total,
+leaderboard, record or alert. Under the hood (`lib/admin-players.ts`,
+migration `0017_admin_players.sql`) the mark sets `players.is_admin` and
+flips `bets.is_house` on the player's bets, which every continuous aggregate
+already filters on, so no aggregate had to be recreated; the collector's
+sink joins `players` on insert so new bets by a marked player land with
+`is_house` set, and the alert matcher skips them. Because the aggregate
+policies only look back a few days, marking or unmarking refreshes
+`bets_hourly`, `player_daily`, `bets_daily` and `bets_daily_records` from
+the player's first bet onwards after the response is sent (only the
+touched buckets are recomputed), then recomputes the streaks. Coinflip and
+jackpot rake (`flips_daily`, `jackpots_daily`) is per round, not per
+player, and is not affected.
+
 ## Live updates
 
 Pages are server-rendered once, then kept current by the client. Each page

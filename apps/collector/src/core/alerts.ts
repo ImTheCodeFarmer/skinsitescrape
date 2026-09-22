@@ -5,6 +5,8 @@
  * owner's bot. Rules and bots are reloaded every 30 seconds. A delivery row
  * per (rule, bet) makes sends idempotent across re-flushes and restarts; a
  * rule's cooldown holds further sends for that many seconds after one.
+ * Bets by house bots and by admin-marked players (players.is_admin) never
+ * match: neither counts anywhere else on the dashboard.
  */
 import { decryptSecret, formatAlert, sql, type Db } from "@casino/db";
 import type { BetRow } from "./sink.js";
@@ -28,6 +30,8 @@ type Rule = {
 
 export class Alerts {
   private rules: Rule[] = [];
+  /** site|external_id of admin-marked players, reloaded with the rules. */
+  private admins = new Set<string>();
   private names = new Map<string, { name: string; at: number }>();
   private timer: NodeJS.Timeout;
   private queue: Promise<void> = Promise.resolve();
@@ -60,6 +64,8 @@ export class Alerts {
       // Keep in-memory cooldown state across reloads.
       for (const r of next) { const prev = this.rules.find((p) => p.id === r.id); if (prev && prev.lastFiredAt > r.lastFiredAt) r.lastFiredAt = prev.lastFiredAt; }
       this.rules = next;
+      const admins = (await this.db.execute(sql`SELECT site, external_id FROM players WHERE is_admin`)) as unknown as { site: string; external_id: string }[];
+      this.admins = new Set(admins.map((a) => `${a.site}|${a.external_id}`));
       if (Math.random() < 0.05) await this.db.execute(sql`DELETE FROM alert_deliveries WHERE sent_at < now() - interval '7 days'`);
     } catch (err) {
       log.warn({ err }, "alert rules could not be loaded");
@@ -82,7 +88,7 @@ export class Alerts {
     if (!this.rules.length) return;
     const now = Date.now();
     for (const b of bets) {
-      if (!b.settledAt || b.isHouse) continue;
+      if (!b.settledAt || b.isHouse || this.admins.has(`${b.site}|${b.playerId}`)) continue;
       for (const r of this.rules) {
         if (!this.matches(r, b)) continue;
         if (r.cooldownSeconds && now - r.lastFiredAt < r.cooldownSeconds * 1000) continue;

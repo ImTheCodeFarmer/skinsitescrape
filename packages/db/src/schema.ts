@@ -45,6 +45,8 @@ export const players = pgTable(
     displayName: text("display_name"),
     avatar: text("avatar"),
     isHouse: boolean("is_house").notNull().default(false),
+    /** Marked by a dashboard admin: bets are kept but written with is_house so no total counts them (migration 0017). */
+    isAdmin: boolean("is_admin").notNull().default(false),
     firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().defaultNow(),
     lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().defaultNow(),
   },

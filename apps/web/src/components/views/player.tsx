@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BetsTable } from "@/components/bets-table";
 import { CasinoLogo } from "@/components/casino-logo";
 import { Confidence } from "@/components/confidence";
-import { PlayerAvatar, PlayerLink } from "@/components/player-link";
+import { AdminTag, PlayerAvatar, PlayerLink } from "@/components/player-link";
 import { NetChart } from "@/components/charts/net-chart";
 import { GameShare } from "@/components/charts/game-share";
 import { KpiCard } from "@/components/kpi-card";
@@ -103,8 +103,10 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
                   </Link>
                 ) : null}
                 {sites.size > 1 ? <Badge variant="secondary" className="gap-1 font-normal"><Link2 className="size-3" strokeWidth={1.5} />{sites.size} sites</Badge> : null}
+                {anchor.admin ? <AdminTag className="h-5 text-xs" /> : null}
               </div>
               <p className="text-sm text-muted-foreground">
+                {anchor.admin ? <>Marked as an admin of the site: bets are logged below but count toward no total. Right-click the name to change. · </> : null}
                 Player id <span className="font-mono text-xs">{anchor.id}</span>
                 {anchor.firstSeen ? <> · first seen <TimeAgo iso={anchor.firstSeen} /></> : null}
                 {anchor.lastSeen ? <> · last seen <TimeAgo iso={anchor.lastSeen} /></> : null}
@@ -140,7 +142,7 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
                   <div key={key(l)} className={cn("flex flex-col gap-3 rounded-lg px-3 py-2.5 shadow-border", !isCounted && "opacity-80")}>
                     <div className="flex items-center gap-3">
                       <span className="min-w-0 flex-1">
-                        <PlayerLink site={l.site} id={l.id} name={l.handle} avatar={l.avatar} color={m?.color ?? "#888"} size={32} className="max-w-full gap-2.5" nameClassName="text-sm font-medium" />
+                        <PlayerLink site={l.site} id={l.id} name={l.handle} avatar={l.avatar} admin={l.admin} color={m?.color ?? "#888"} size={32} className="max-w-full gap-2.5" nameClassName="text-sm font-medium" />
                         <span className="mt-0.5 flex items-center gap-1.5 pl-[42px] text-[11px] text-muted-foreground">
                           {m ? <CasinoLogo casino={m} size={12} className="rounded-sm" /> : null}
                           {m?.name ?? l.site}

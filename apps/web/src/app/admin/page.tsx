@@ -3,9 +3,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AdminTabs } from "@/components/admin-tabs";
+import { AdminPlayers } from "@/components/views/admin-players";
 import { AdminSites } from "@/components/views/admin-sites";
 import { TimeAgo } from "@/components/time-ago";
 import { ADMIN_TABS, type AdminTab } from "@/lib/admin-tabs";
+import { listAdminPlayers } from "@/lib/admin-players";
 import { getSession, isAdmin } from "@/lib/auth";
 import { siteGames, statuses } from "@/lib/queries";
 import { listUsers, type SiteUser } from "@/lib/users";
@@ -13,7 +15,7 @@ import { listUsers, type SiteUser } from "@/lib/users";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin — SkinWagerTracker" };
 
-/** Admin-only: connected Steam accounts and per-site info. Anyone else gets the 404 the page would show if it did not exist. */
+/** Admin-only: connected Steam accounts, admin-marked players and per-site info. Anyone else gets the 404 the page would show if it did not exist. */
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await getSession();
   if (!isAdmin(session)) notFound();
@@ -28,7 +30,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         </div>
         <AdminTabs current={tab} />
       </div>
-      {tab === "sites" ? <Sites /> : <Users users={await listUsers()} />}
+      {tab === "sites" ? <Sites /> : tab === "players" ? <AdminPlayers players={await listAdminPlayers()} /> : <Users users={await listUsers()} />}
     </div>
   );
 }
