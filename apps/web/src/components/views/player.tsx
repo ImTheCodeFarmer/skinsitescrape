@@ -17,10 +17,10 @@ import { Reveal, Stagger } from "@/components/reveal";
 import { TimeAgo } from "@/components/time-ago";
 import { SteamIcon } from "@/components/steam-button";
 import { SteamPanel } from "@/components/steam-panel";
-import { getCasinoMeta } from "@/lib/casinos";
+import { gameLabel, getCasinoMeta } from "@/lib/casinos";
 import { count, money, pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Account, AccountStats, PlayerProfile, PlayerTotals, Range } from "@/lib/types";
+import type { Account, AccountStats, BetExtreme, PlayerProfile, PlayerTotals, Range } from "@/lib/types";
 
 const RANGE_LABEL: Record<Range, string> = { 1: "last 24 hours", 7: "last 7 days", 30: "last 30 days", 90: "last 90 days" };
 const key = (a: Account) => `${a.site}:${a.id}`;
@@ -29,13 +29,24 @@ function Avatar({ account, size = 40, className }: { account: Account; size?: nu
   return <PlayerAvatar name={account.handle} avatar={account.avatar} color={getCasinoMeta(account.site)?.color ?? "#888"} size={size} className={className} />;
 }
 
-function Kpis({ t, range, accent }: { t: PlayerTotals; range: Range; accent?: string }) {
+const signed = (v: number) => `${v < 0 ? "−" : "+"}${money(Math.abs(v))}`;
+/** "on Case Battles at Clash.gg, 3 days ago" for an extreme bet; the site is named only on mixed-site lists. */
+const extremeHint = (e: BetExtreme, oneSite: boolean) => {
+  const site = oneSite ? "" : ` at ${getCasinoMeta(e.site)?.name ?? e.site}`;
+  const days = Math.floor((Date.now() - new Date(e.at).getTime()) / 86_400_000);
+  const when = days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+  return `${money(e.wagered)} on ${gameLabel(e.game)}${site}, ${when}`;
+};
+
+function Kpis({ t, range, accent, oneSite }: { t: PlayerTotals; range: Range; accent?: string; oneSite: boolean }) {
   const winRate = t.bets ? t.wins / t.bets : 0;
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <KpiCard label="Wagered" value={t.wagered} format={money} hint={`${count(t.bets)} bets, ${RANGE_LABEL[range]}`} accent={accent} />
-      <KpiCard label="Profit / loss" value={t.net} format={(v) => `${v < 0 ? "−" : "+"}${money(Math.abs(v))}`} hint={t.wagered ? `${pct(t.net / t.wagered)} of wagered` : "No bets in range"} tone={t.net > 0 ? "good" : t.net < 0 ? "bad" : "neutral"} />
+      <KpiCard label="Profit / loss" value={t.net} format={signed} hint={t.wagered ? `${pct(t.net / t.wagered)} of wagered · peaked at ${signed(t.high)}, bottomed at ${signed(t.low)}` : "No bets in range"} tone={t.net > 0 ? "good" : t.net < 0 ? "bad" : "neutral"} />
       <KpiCard label="Win rate" value={winRate * 100} format={(v) => `${v.toFixed(1)}%`} hint={`${count(t.wins)} winning bets`} />
+      <KpiCard label="Biggest win" value={t.bestWin?.amount ?? 0} format={(v) => `+${money(v)}`} hint={t.bestWin ? extremeHint(t.bestWin, oneSite) : "No winning bet in range"} tone={t.bestWin ? "good" : "neutral"} />
+      <KpiCard label="Biggest loss" value={t.worstLoss?.amount ?? 0} format={(v) => `−${money(v)}`} hint={t.worstLoss ? extremeHint(t.worstLoss, oneSite) : "No losing bet in range"} tone={t.worstLoss ? "bad" : "neutral"} />
       <KpiCard label="Active days" value={t.activeDays} format={count} hint={t.favorite ? `Plays ${t.favorite} the most` : "Nothing settled in range"} />
     </div>
   );
@@ -121,7 +132,7 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
         </Card>
       </Reveal>
 
-      <Kpis t={totals} range={range} accent={anchorMeta?.color} />
+      <Kpis t={totals} range={range} accent={anchorMeta?.color} oneSite={sites.size <= 1} />
 
       <Reveal>
         <Card>
@@ -187,7 +198,7 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
                   <span className="flex items-center gap-2"><Avatar account={c.account} size={22} /><span className="font-medium text-foreground">{c.account.handle}</span> on {m?.name ?? c.account.site}</span>
                   {m ? <a href={m.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs hover:text-foreground">{m.url.replace(/^https?:\/\//, "")}<ExternalLink className="size-3" strokeWidth={1.5} /></a> : null}
                 </div>
-                <Kpis t={c.totals} range={range} accent={m?.color} />
+                <Kpis t={c.totals} range={range} accent={m?.color} oneSite />
                 <Activity stats={c} range={range} site={c.account.site} />
               </TabsContent>
             );

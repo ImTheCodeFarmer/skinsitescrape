@@ -233,6 +233,9 @@ export type LinkedAccount = Account & {
   hops: number;
 };
 
+/** One extreme bet: the amount the player was up or down on it, with where and when. */
+export type BetExtreme = { site: string; game: string; at: string; amount: number; wagered: number };
+
 export type PlayerTotals = {
   wagered: number;
   payout: number;
@@ -242,6 +245,12 @@ export type PlayerTotals = {
   wins: number;
   activeDays: number;
   favorite: string;
+  /** Largest single-bet profit and largest single-bet loss in the range. */
+  bestWin: BetExtreme | null;
+  worstLoss: BetExtreme | null;
+  /** Peak and trough of the running profit and loss over the range, bet by bet, from a start of zero. */
+  high: number;
+  low: number;
 };
 
 /** Per-bucket wager and player net, for the profile chart. */

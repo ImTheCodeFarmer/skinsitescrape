@@ -3,7 +3,7 @@ import { sql } from "@casino/db";
 import { db } from "./db";
 import { CASINOS, gameLabel, getCasinoMeta } from "./casinos";
 import { memo, ttlFor } from "./memo";
-import type { Account, AccountStats, BetRow, SteamProfile, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, LinkEvidence, LinkedAccount, PlayerPoint, PlayerProfile, PlayerStat, PlayerTotals, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary } from "./types";
+import type { Account, AccountStats, BetRow, SteamProfile, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, LinkEvidence, LinkedAccount, PlayerPoint, PlayerProfile, PlayerStat, PlayerTotals, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary, BetExtreme } from "./types";
 
 /** Whether a site has coinflip / jackpot detail (rounds tables, breakdown, pot records). */
 const hasPots = (site: string) => Boolean(getCasinoMeta(site)?.pots);
@@ -649,7 +649,36 @@ const accountFilter = (accounts: Account[], alias: string) =>
     ? sql`(${sql.join(accounts.map((a) => sql`(${sql.raw(alias)}.site = ${a.site} AND ${sql.raw(alias)}.player_id = ${a.id})`), sql` OR `)})`
     : sql`false`;
 
-const emptyTotals = (): PlayerTotals => ({ wagered: 0, payout: 0, net: 0, bets: 0, wins: 0, activeDays: 0, favorite: "" });
+const emptyTotals = (): PlayerTotals => ({ wagered: 0, payout: 0, net: 0, bets: 0, wins: 0, activeDays: 0, favorite: "", bestWin: null, worstLoss: null, high: 0, low: 0 });
+
+const extremeOf = (v: unknown): BetExtreme | null => {
+  const x = v as Record<string, unknown> | null;
+  return x ? { site: String(x.site), game: String(x.game), at: iso(x.at), amount: n(x.amount), wagered: n(x.wagered) } : null;
+};
+
+/**
+ * The extremes of a set of accounts over the range: the single bet they
+ * profited most on, the one they lost most on, and the highest and lowest
+ * their running profit and loss reached, bet by bet, from zero at the start
+ * of the range. One scan of the accounts' bets (bets_player_idx); no rollup
+ * carries per-bet maxima, so this reads the bets themselves like the win
+ * count does.
+ */
+async function accountExtremes(accounts: Account[], range: Range): Promise<Pick<PlayerTotals, "bestWin" | "worstLoss" | "high" | "low">> {
+  if (!accounts.length) return { bestWin: null, worstLoss: null, high: 0, low: 0 };
+  const { from, to } = window(range);
+  const [r] = await rows(sql`
+    WITH b AS MATERIALIZED (
+      SELECT site, game, coalesce(settled_at, placed_at) AS at, placed_at, wagered_usd, payout_usd - wagered_usd AS net, won
+      FROM bets b WHERE settled_at IS NOT NULL AND NOT is_house AND placed_at >= ${from} AND placed_at < ${to} AND ${accountFilter(accounts, "b")}),
+    run AS (SELECT sum(net) OVER (ORDER BY at, placed_at) AS bal FROM b)
+    SELECT
+      (SELECT json_build_object('site', site, 'game', game, 'at', at, 'amount', net, 'wagered', wagered_usd) FROM b WHERE won AND net > 0 ORDER BY net DESC, at DESC LIMIT 1) AS best,
+      (SELECT json_build_object('site', site, 'game', game, 'at', at, 'amount', -net, 'wagered', wagered_usd) FROM b WHERE NOT coalesce(won, false) AND net < 0 ORDER BY net ASC, at DESC LIMIT 1) AS worst,
+      (SELECT greatest(0, coalesce(max(bal), 0)) FROM run) AS high,
+      (SELECT least(0, coalesce(min(bal), 0)) FROM run) AS low`);
+  return { bestWin: extremeOf(r?.best), worstLoss: extremeOf(r?.worst), high: n(r?.high), low: n(r?.low) };
+}
 
 /** Per-account stats over the range, from the bets themselves (24h) or the daily rollup. */
 async function accountTotals(accounts: Account[], range: Range): Promise<Map<string, PlayerTotals>> {
@@ -679,6 +708,7 @@ async function accountTotals(accounts: Account[], range: Range): Promise<Map<str
           GROUP BY d.site, d.player_id`);
   for (const x of r) {
     out.set(`${x.site}:${x.player_id}`, {
+      ...emptyTotals(), // extremes come from accountExtremes
       wagered: n(x.wagered), payout: n(x.payout), net: n(x.payout) - n(x.wagered), bets: n(x.bets), wins: n(x.wins),
       activeDays: n(x.active_days), favorite: gameLabel(String(x.favorite ?? "")),
     });
@@ -748,6 +778,7 @@ async function accountBets(accounts: Account[], range: Range, limit = 25): Promi
   }));
 }
 
+/** Adds up per-account totals. The extremes cannot be summed; the caller measures them over all accounts at once. */
 const sumTotals = (parts: PlayerTotals[]): PlayerTotals => {
   const t = emptyTotals();
   let best: { g: string; w: number } | null = null;
@@ -771,21 +802,22 @@ export async function playerProfile(site: string, id: string, range: Range): Pro
     : await rows(sql`SELECT steam_id FROM player_identities pi WHERE (${sql.join(countedAccounts.map((a) => sql`(pi.site = ${a.site} AND pi.external_id = ${a.id})`), sql` OR `)}) ORDER BY last_seen DESC LIMIT 1`);
   const steamIds = [...new Set([...keyed, ...learned.map((x) => String(x.steam_id))])];
   const steam = steamIds.length ? await steamProfile(steamIds[0]) : null;
-  const [totalsBy, series, games, recent, ...perAccount] = await Promise.all([
+  const [totalsBy, extremes, series, games, recent, ...perAccount] = await Promise.all([
     accountTotals(countedAccounts, range),
+    accountExtremes(countedAccounts, range),
     accountSeries(countedAccounts, range),
     accountGames(countedAccounts, range),
     accountBets(countedAccounts, range, 30),
-    ...countedAccounts.map((a) => Promise.all([accountSeries([a], range), accountGames([a], range), accountBets([a], range, 20)])),
+    ...countedAccounts.map((a) => Promise.all([accountSeries([a], range), accountGames([a], range), accountBets([a], range, 20), accountExtremes([a], range)])),
   ]);
   const counted: AccountStats[] = countedAccounts.map((a, i) => ({
     account: a,
-    totals: totalsBy.get(`${a.site}:${a.id}`) ?? emptyTotals(),
+    totals: { ...(totalsBy.get(`${a.site}:${a.id}`) ?? emptyTotals()), ...perAccount[i][3] },
     series: perAccount[i][0],
     games: perAccount[i][1],
     recent: perAccount[i][2],
   }));
-  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: sumTotals(counted.map((c) => c.totals)), combined: { series, games, recent }, steamId: steamIds[0] ?? null, steam };
+  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: { ...sumTotals(counted.map((c) => c.totals)), ...extremes }, combined: { series, games, recent }, steamId: steamIds[0] ?? null, steam };
 }
 
 /** Steam profile data for a Steam-keyed account, when the collector has fetched it. */
