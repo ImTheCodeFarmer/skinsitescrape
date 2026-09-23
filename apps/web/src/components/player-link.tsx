@@ -4,10 +4,10 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Link2, ShieldCheck, ShieldOff, UserRound } from "lucide-react";
+import { Link2, Radio, ShieldCheck, ShieldOff, UserRound } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { adminPlayerStateAction, setAdminPlayerAction } from "@/app/player/actions";
-import { useViewer } from "@/components/viewer";
+import { playerMarksAction, setAdminPlayerAction, setStreamerAction } from "@/app/player/actions";
+import { useViewer, type Marks } from "@/components/viewer";
 import { cn } from "@/lib/utils";
 
 export const profileHref = (site: string, id: string) => `/player/${site}/${encodeURIComponent(id)}`;
@@ -34,54 +34,65 @@ export function AdminTag({ className }: { className?: string }) {
   );
 }
 
+/** Tag on a streamer-marked player's name. Their bets count like anyone's. */
+export function StreamerTag({ className }: { className?: string }) {
+  return (
+    <span title="Streamer" className={cn("inline-flex h-4 shrink-0 items-center gap-1 rounded-4xl border border-violet-500/30 px-1.5 text-[10px] leading-none text-violet-400", className)}>
+      <Radio className="size-2.5" strokeWidth={2} />
+      streamer
+    </span>
+  );
+}
+
 /**
  * A username as shown anywhere in the app: picture, name and a link icon,
  * the whole thing one link to the player's profile. `children` go between
- * the name and the icon (a streak badge, a "won" tag). `admin` says the
- * player is admin-marked, when the row knows; marks changed in this session
- * override it. Dashboard admins get a right-click menu to change the mark.
+ * the name and the icon (a streak badge, a "won" tag). `admin` and
+ * `streamer` say the player carries that mark, when the row knows; marks
+ * changed in this session override them. Dashboard admins get a
+ * right-click menu to change either mark.
  */
 export function PlayerLink({
-  site, id, name, avatar, color, size = 22, className, nameClassName, admin, children,
+  site, id, name, avatar, color, size = 22, className, nameClassName, admin, streamer, children,
 }: {
-  site: string; id: string; name: string; avatar: string | null; color: string; size?: number; className?: string; nameClassName?: string; admin?: boolean; children?: React.ReactNode;
+  site: string; id: string; name: string; avatar: string | null; color: string; size?: number; className?: string; nameClassName?: string; admin?: boolean; streamer?: boolean; children?: React.ReactNode;
 }) {
   const viewer = useViewer();
-  const marked = viewer.marks.get(`${site}:${id}`) ?? admin ?? false;
+  const changed = viewer.marks.get(`${site}:${id}`);
+  const marks = { admin: changed?.admin ?? admin ?? false, streamer: changed?.streamer ?? streamer ?? false };
   const link = (
     <Link href={profileHref(site, id)} title={`${name}'s profile`} className={cn("group/player inline-flex min-w-0 items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50", className)}>
       <PlayerAvatar name={name} avatar={avatar} color={color} size={size} />
       <span className={cn("truncate group-hover/player:underline", nameClassName)}>{name}</span>
-      {marked ? <AdminTag /> : null}
+      {marks.streamer ? <StreamerTag /> : null}
+      {marks.admin ? <AdminTag /> : null}
       {children}
       <Link2 aria-hidden className="size-3 shrink-0 text-muted-foreground opacity-60 transition-[opacity] duration-150 ease-out group-hover/player:opacity-100" strokeWidth={1.5} />
     </Link>
   );
   if (!viewer.admin || !site) return link;
-  return <PlayerMenu site={site} id={id} name={name} marked={marked}>{link}</PlayerMenu>;
+  return <PlayerMenu site={site} id={id} name={name} marks={marks}>{link}</PlayerMenu>;
 }
 
-/** Right-click menu for dashboard admins: mark or unmark the player as an admin of their site. */
-function PlayerMenu({ site, id, name, marked, children }: { site: string; id: string; name: string; marked: boolean; children: React.ReactNode }) {
+/** Right-click menu for dashboard admins: mark or unmark the player as an admin of their site, or as a streamer. */
+function PlayerMenu({ site, id, name, marks, children }: { site: string; id: string; name: string; marks: Required<Marks>; children: React.ReactNode }) {
   const viewer = useViewer();
   const router = useRouter();
-  const [known, setKnown] = React.useState<boolean | null>(viewer.marks.has(`${site}:${id}`) ? marked : null);
+  const known = viewer.marks.get(`${site}:${id}`);
+  const lookedUp = known?.admin !== undefined && known?.streamer !== undefined;
   const [pending, startTransition] = React.useTransition();
   const [note, setNote] = React.useState<{ text: string; error: boolean } | null>(null);
-  const current = known ?? marked;
 
   const onOpenChange = (open: boolean) => {
-    if (!open || viewer.marks.has(`${site}:${id}`)) return;
-    // The row may not carry the flag; ask before showing which way the toggle goes.
-    void adminPlayerStateAction(site, id).then((r) => { if (r.ok) { setKnown(r.admin); viewer.setMark(site, id, r.admin); } });
+    if (!open || lookedUp) return;
+    // The row may not carry the flags; ask before showing which way the toggles go.
+    void playerMarksAction(site, id).then((r) => { if (r.ok) viewer.setMark(site, id, { admin: r.admin, streamer: r.streamer }); });
   };
-  const toggle = () => {
-    const next = !current;
+  const run = (act: () => Promise<{ ok: true; message?: string } | { ok: false; error: string }>, apply: () => void) =>
     startTransition(async () => {
-      const r = await setAdminPlayerAction(site, id, next);
+      const r = await act();
       if (r.ok) {
-        setKnown(r.admin);
-        viewer.setMark(site, id, r.admin);
+        apply();
         setNote({ text: r.message ?? "Saved.", error: false });
         router.refresh();
       } else {
@@ -89,6 +100,13 @@ function PlayerMenu({ site, id, name, marked, children }: { site: string; id: st
       }
       setTimeout(() => setNote(null), 6000);
     });
+  const toggleAdmin = () => {
+    const next = !marks.admin;
+    run(() => setAdminPlayerAction(site, id, next), () => viewer.setMark(site, id, { admin: next }));
+  };
+  const toggleStreamer = () => {
+    const next = !marks.streamer;
+    run(() => setStreamerAction(site, id, next), () => viewer.setMark(site, id, { streamer: next }));
   };
 
   return (
@@ -98,13 +116,17 @@ function PlayerMenu({ site, id, name, marked, children }: { site: string; id: st
         <ContextMenuContent>
           <ContextMenuLabel className="max-w-56 truncate">{name}</ContextMenuLabel>
           <ContextMenuSeparator />
-          <ContextMenuItem disabled={pending} onSelect={toggle}>
-            {current ? <ShieldOff strokeWidth={1.5} /> : <ShieldCheck strokeWidth={1.5} />}
-            {current ? "Remove admin mark" : "Mark as admin"}
+          <ContextMenuItem disabled={pending} onSelect={toggleAdmin}>
+            {marks.admin ? <ShieldOff strokeWidth={1.5} /> : <ShieldCheck strokeWidth={1.5} />}
+            {marks.admin ? "Remove admin mark" : "Mark as admin"}
+          </ContextMenuItem>
+          <ContextMenuItem disabled={pending} onSelect={toggleStreamer}>
+            <Radio strokeWidth={1.5} />
+            {marks.streamer ? "Remove streamer mark" : "Mark as streamer"}
           </ContextMenuItem>
           <ContextMenuItem onSelect={() => router.push(profileHref(site, id))}>
             <UserRound strokeWidth={1.5} />
-            Open profile
+            {marks.streamer ? "Open streamer profile" : "Open profile"}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>

@@ -14,9 +14,10 @@ export type AdminPlayer = { site: string; id: string; handle: string; avatar: st
 
 const DAY = 86_400_000;
 
-export async function isAdminPlayer(site: string, id: string): Promise<boolean> {
-  const r = (await db().execute(sql`SELECT is_admin FROM players WHERE site = ${site} AND external_id = ${id}`)) as unknown as { is_admin: boolean }[];
-  return Boolean(r[0]?.is_admin);
+/** Both marks a dashboard admin can set on a player: admin (lib/admin-players.ts) and streamer (lib/streamers.ts). */
+export async function playerMarks(site: string, id: string): Promise<{ admin: boolean; streamer: boolean }> {
+  const r = (await db().execute(sql`SELECT is_admin, is_streamer FROM players WHERE site = ${site} AND external_id = ${id}`)) as unknown as { is_admin: boolean; is_streamer: boolean }[];
+  return { admin: Boolean(r[0]?.is_admin), streamer: Boolean(r[0]?.is_streamer) };
 }
 
 export async function listAdminPlayers(): Promise<AdminPlayer[]> {

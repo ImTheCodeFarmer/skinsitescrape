@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
-import { Bell, LayoutGrid, ShieldCheck, Tag } from "lucide-react";
+import { Bell, LayoutGrid, Mail, ShieldCheck, Tag } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar,
@@ -62,6 +62,14 @@ export function AppSidebar({ sites, admin = false }: { sites: SiteCard[]; admin?
                   <Link href="/alerts">
                     <Bell className="size-4" strokeWidth={1.5} />
                     <span>Alerts</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === "/contact"}>
+                  <Link href="/contact">
+                    <Mail className="size-4" strokeWidth={1.5} />
+                    <span>Contact</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

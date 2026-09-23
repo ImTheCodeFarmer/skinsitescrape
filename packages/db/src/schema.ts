@@ -47,8 +47,25 @@ export const players = pgTable(
     isHouse: boolean("is_house").notNull().default(false),
     /** Marked by a dashboard admin: bets are kept but written with is_house so no total counts them (migration 0017). */
     isAdmin: boolean("is_admin").notNull().default(false),
+    /** Marked by a dashboard admin as a streamer: a tag and a streamer profile, no effect on totals (migration 0018). */
+    isStreamer: boolean("is_streamer").notNull().default(false),
     firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().defaultNow(),
     lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.site, t.externalId] })],
+);
+
+/** Channels and socials a dashboard admin entered for a streamer-marked player (migration 0018). */
+export const streamerProfiles = pgTable(
+  "streamer_profiles",
+  {
+    site: text("site").notNull(),
+    externalId: text("external_id").notNull(),
+    name: text("name"),
+    bio: text("bio"),
+    /** Platform key (twitch, kick, youtube, x, …) to URL. */
+    links: jsonb("links").notNull().default({}),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.site, t.externalId] })],
 );

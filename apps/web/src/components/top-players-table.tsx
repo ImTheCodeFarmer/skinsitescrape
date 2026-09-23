@@ -39,7 +39,7 @@ export function TopPlayersTable({ players, color, site, limit = 10, rangeDays }:
           <MotionRow key={p.id} layout {...rowAnim}>
             <TableCell className="text-muted-foreground tabular-nums">{i + 1}</TableCell>
             <TableCell>
-              <PlayerLink site={site} id={p.id} name={p.handle} avatar={p.avatar} color={color} size={28} className="gap-2.5" nameClassName="max-w-[14rem] font-medium">
+              <PlayerLink site={site} id={p.id} name={p.handle} avatar={p.avatar} streamer={p.streamer} color={color} size={28} className="gap-2.5" nameClassName="max-w-[14rem] font-medium">
                 {p.activeDays >= 5 ? (
                   <Tooltip>
                     <TooltipTrigger asChild>

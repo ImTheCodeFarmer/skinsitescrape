@@ -1,4 +1,6 @@
 /** Serializable shapes shared by server queries and client components. */
+import type { StreamerProfile } from "./streamer-links";
+
 export type Range = 1 | 7 | 30 | 90; // 1 = last 24h (hourly buckets)
 
 export type Point = {
@@ -38,6 +40,8 @@ export type PlayerStat = {
   bets: number;
   favorite: string;
   activeDays: number;
+  /** Streamer-marked (lib/streamers.ts). */
+  streamer?: boolean;
 };
 
 /** One tracked game of a site, from the daily rollup. */
@@ -173,8 +177,8 @@ export type BetRow = {
   roundId: string | null;
   placedAt: string;
   settledAt: string;
-  /** `admin`: the player is admin-marked, so this bet counts toward no total. Only set for admin viewers. */
-  player: { id: string; name: string; avatar: string | null; admin?: boolean };
+  /** `admin`: the player is admin-marked, so this bet counts toward no total. Only set for admin viewers. `streamer`: streamer-marked. */
+  player: { id: string; name: string; avatar: string | null; admin?: boolean; streamer?: boolean };
   wagered: number;
   payout: number;
   won: boolean | null;
@@ -221,8 +225,8 @@ export type LinkEvidence = {
 };
 
 /** One account on one site. */
-/** `admin`: marked as an admin of the site; bets are logged but excluded from every total. */
-export type Account = { site: string; id: string; handle: string; avatar: string | null; admin: boolean; firstSeen: string | null; lastSeen: string | null };
+/** `admin`: marked as an admin of the site; bets are logged but excluded from every total. `streamer`: marked as a streamer. */
+export type Account = { site: string; id: string; handle: string; avatar: string | null; admin: boolean; streamer: boolean; firstSeen: string | null; lastSeen: string | null };
 
 /** Another account we believe belongs to the same person, with how sure we are. */
 export type LinkedAccount = Account & {
@@ -271,6 +275,8 @@ export type PlayerProfile = {
   steamId: string | null;
   /** That Steam profile, once fetched. */
   steam: SteamProfile | null;
+  /** When the anchor, or an account counted with it, is streamer-marked: that account and its channels. Turns the page into a streamer profile. */
+  streamer: { account: Account; profile: StreamerProfile } | null;
 };
 
 /** What Steam shows publicly about a Steam-keyed account, refreshed by the collector. */

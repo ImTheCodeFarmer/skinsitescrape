@@ -567,6 +567,35 @@ touched buckets are recomputed), then recomputes the streaks. Coinflip and
 jackpot rake (`flips_daily`, `jackpots_daily`) is per round, not per
 player, and is not affected.
 
+**Streamers.** The same right-click menu has *Mark as streamer*. Unlike the
+admin mark it changes no total: the name gets a `streamer` tag in bet lists,
+leaderboards and profiles, and the player's profile becomes a streamer
+profile, headed by the name they stream under, a bio and buttons for their
+channels (Twitch, Kick, YouTube, X, TikTok, Instagram, Discord, a website).
+A dashboard admin fills those in with *Edit streamer* on the profile; a
+handle (`@name`) or a full link both work, and only http(s) links are kept
+(`lib/streamer-links.ts`). An account linked to a streamer's and counted
+with it shows the same header. The "Streamers" tab of `/admin` lists the
+marked accounts and their channels and unmarks them. Migration
+`0018_streamers.sql` adds `players.is_streamer` and the `streamer_profiles`
+table (`lib/streamers.ts`); unmarking keeps the profile row, so marking the
+player again restores their channels.
+
+## Contact form
+
+`/contact` (linked in the sidebar, open to everyone) takes a name, email,
+optional Telegram and Discord usernames and a message, and a server action
+sends it to one Telegram chat with the bot in `CONTACT_TELEGRAM_BOT_TOKEN`
+and `CONTACT_TELEGRAM_CHAT_ID`, in the forum topic `CONTACT_TELEGRAM_THREAD_ID`
+when set (`lib/contact.ts`). Spam is kept out three
+ways: a Cloudflare Turnstile widget whose token the server verifies with
+Cloudflare (`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`; without the secret
+the check is skipped in development and every submission is refused in
+production), a hidden honeypot field that only bots fill in (those get a
+fake success), and at most three well-formed submissions per IP per 15
+minutes, read from Cloudflare's `CF-Connecting-IP`. The limit is kept in
+memory, so it is per process and resets on deploy.
+
 ## Live updates
 
 Pages are server-rendered once, then kept current by the client. Each page

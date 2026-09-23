@@ -3,6 +3,7 @@ import { sql } from "@casino/db";
 import { db } from "./db";
 import { CASINOS, gameLabel, getCasinoMeta } from "./casinos";
 import { memo, ttlFor } from "./memo";
+import { getStreamerProfile } from "./streamers";
 import type { Account, AccountStats, BetRow, SteamProfile, CoinflipRound, GameStat, Highlight, Highlights, JackpotRound, LinkEvidence, LinkedAccount, PlayerPoint, PlayerProfile, PlayerStat, PlayerTotals, Point, ProfitBreakdown, Range, SiteCard, SiteGameInfo, SiteStatus, Summary, BetExtreme } from "./types";
 
 /** Whether a site has coinflip / jackpot detail (rounds tables, breakdown, pot records). */
@@ -184,7 +185,7 @@ export async function topPlayers(site: string | null, range: Range, limit = 10):
             FROM bets b WHERE settled_at IS NOT NULL AND NOT is_house
               AND placed_at >= ${from} AND placed_at < ${to} ${siteFilter}
             GROUP BY b.site, b.player_id ORDER BY wagered DESC LIMIT ${limit})
-          SELECT agg.*, p.display_name, p.avatar FROM agg
+          SELECT agg.*, p.display_name, p.avatar, p.is_streamer FROM agg
           LEFT JOIN players p ON p.site = agg.site AND p.external_id = agg.player_id
           ORDER BY wagered DESC`)
       : await rows(sql`
@@ -194,7 +195,7 @@ export async function topPlayers(site: string | null, range: Range, limit = 10):
                    (array_agg(game ORDER BY wagered_usd DESC))[1] favorite
             FROM player_daily b WHERE bucket >= ${from} AND bucket < ${to} ${siteFilter}
             GROUP BY b.site, b.player_id ORDER BY wagered DESC LIMIT ${limit})
-          SELECT agg.*, p.display_name, p.avatar FROM agg
+          SELECT agg.*, p.display_name, p.avatar, p.is_streamer FROM agg
           LEFT JOIN players p ON p.site = agg.site AND p.external_id = agg.player_id
           ORDER BY wagered DESC`);
   return r.map((x) => ({
@@ -207,6 +208,7 @@ export async function topPlayers(site: string | null, range: Range, limit = 10):
     bets: n(x.bets),
     favorite: gameLabel(String(x.favorite ?? "")),
     activeDays: n(x.active_days),
+    streamer: Boolean(x.is_streamer),
   }));
 }
 
@@ -312,7 +314,7 @@ async function recentBetsQuery(site: string, range: Range, limit: number, showAd
   const sinceFilter = since ? sql`AND b.settled_at > ${since}::timestamptz` : sql``;
   const houseFilter = showAdmin ? sql`(NOT b.is_house OR p.is_admin)` : sql`NOT b.is_house`;
   const r = await rows(sql`
-    SELECT b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar, p.is_admin
+    SELECT b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar, p.is_admin, p.is_streamer
     FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
     WHERE b.site = ${site} AND ${houseFilter} AND b.settled_at IS NOT NULL
       AND b.placed_at >= now() - make_interval(hours => ${hours}) - interval '1 day' AND b.settled_at >= now() - make_interval(hours => ${hours}) ${sinceFilter}
@@ -323,7 +325,7 @@ async function recentBetsQuery(site: string, range: Range, limit: number, showAd
     roundId: str(x.round_id),
     placedAt: iso(x.placed_at),
     settledAt: iso(x.settled_at),
-    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar), ...(showAdmin ? { admin: Boolean(x.is_admin) } : {}) },
+    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar), streamer: Boolean(x.is_streamer), ...(showAdmin ? { admin: Boolean(x.is_admin) } : {}) },
     wagered: n(x.wagered_usd),
     payout: n(x.payout_usd),
     won: x.won == null ? null : Boolean(x.won),
@@ -610,12 +612,13 @@ const accountOf = (x: Row): Account => ({
   handle: str(x.display_name) ?? String(x.external_id),
   avatar: str(x.avatar),
   admin: Boolean(x.is_admin),
+  streamer: Boolean(x.is_streamer),
   firstSeen: x.first_seen ? iso(x.first_seen) : null,
   lastSeen: x.last_seen ? iso(x.last_seen) : null,
 });
 
 export async function account(site: string, id: string): Promise<Account | null> {
-  const r = await rows(sql`SELECT site, external_id, display_name, avatar, is_admin, first_seen, last_seen FROM players WHERE site = ${site} AND external_id = ${id} AND NOT is_house`);
+  const r = await rows(sql`SELECT site, external_id, display_name, avatar, is_admin, is_streamer, first_seen, last_seen FROM players WHERE site = ${site} AND external_id = ${id} AND NOT is_house`);
   return r[0] ? accountOf(r[0]) : null;
 }
 
@@ -638,7 +641,7 @@ export async function linkedAccounts(site: string, id: string): Promise<LinkedAc
       SELECT site, player, max(score) AS score, (array_agg(evidence ORDER BY score DESC, hops))[1] AS evidence, min(hops) AS hops
       FROM walk GROUP BY site, player
     )
-    SELECT b.site, b.player AS external_id, b.score, b.evidence, b.hops, p.display_name, p.avatar, p.is_admin, p.first_seen, p.last_seen
+    SELECT b.site, b.player AS external_id, b.score, b.evidence, b.hops, p.display_name, p.avatar, p.is_admin, p.is_streamer, p.first_seen, p.last_seen
     FROM best b JOIN players p ON p.site = b.site AND p.external_id = b.player
     ORDER BY b.score DESC, p.last_seen DESC`);
   return r.map((x) => ({ ...accountOf(x), score: n(x.score), evidence: x.evidence as LinkEvidence, hops: n(x.hops) }));
@@ -759,7 +762,7 @@ async function accountBets(accounts: Account[], range: Range, limit = 25): Promi
   if (!accounts.length) return [];
   const hours = range === 1 ? 24 : range * 24;
   const r = await rows(sql`
-    SELECT b.site, b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar, p.is_admin
+    SELECT b.site, b.game, b.external_id, b.round_id, b.player_id, b.placed_at, b.settled_at, b.wagered_usd, b.payout_usd, b.won, p.display_name, p.avatar, p.is_admin, p.is_streamer
     FROM bets b LEFT JOIN players p ON p.site = b.site AND p.external_id = b.player_id
     WHERE (NOT b.is_house OR p.is_admin) AND b.settled_at IS NOT NULL AND ${accountFilter(accounts, "b")}
       AND b.placed_at >= now() - make_interval(hours => ${hours}) - interval '1 day' AND b.settled_at >= now() - make_interval(hours => ${hours})
@@ -771,7 +774,7 @@ async function accountBets(accounts: Account[], range: Range, limit = 25): Promi
     roundId: str(x.round_id),
     placedAt: iso(x.placed_at),
     settledAt: iso(x.settled_at),
-    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar), admin: Boolean(x.is_admin) },
+    player: { id: String(x.player_id), name: str(x.display_name) ?? String(x.player_id), avatar: str(x.avatar), admin: Boolean(x.is_admin), streamer: Boolean(x.is_streamer) },
     wagered: n(x.wagered_usd),
     payout: n(x.payout_usd),
     won: x.won == null ? null : Boolean(x.won),
@@ -801,7 +804,13 @@ export async function playerProfile(site: string, id: string, range: Range): Pro
     ? []
     : await rows(sql`SELECT steam_id FROM player_identities pi WHERE (${sql.join(countedAccounts.map((a) => sql`(pi.site = ${a.site} AND pi.external_id = ${a.id})`), sql` OR `)}) ORDER BY last_seen DESC LIMIT 1`);
   const steamIds = [...new Set([...keyed, ...learned.map((x) => String(x.steam_id))])];
-  const steam = steamIds.length ? await steamProfile(steamIds[0]) : null;
+  // The anchor's streamer profile, or that of a counted account when the anchor is an alt of a streamer.
+  const streamerAccount = countedAccounts.find((a) => a.streamer) ?? null;
+  const [steam, streamerInfo] = await Promise.all([
+    steamIds.length ? steamProfile(steamIds[0]) : null,
+    streamerAccount ? getStreamerProfile(streamerAccount.site, streamerAccount.id) : null,
+  ]);
+  const streamer = streamerAccount ? { account: streamerAccount, profile: streamerInfo ?? { site: streamerAccount.site, id: streamerAccount.id, name: null, bio: null, links: {}, updatedAt: null } } : null;
   const [totalsBy, extremes, series, games, recent, ...perAccount] = await Promise.all([
     accountTotals(countedAccounts, range),
     accountExtremes(countedAccounts, range),
@@ -817,7 +826,7 @@ export async function playerProfile(site: string, id: string, range: Range): Pro
     games: perAccount[i][1],
     recent: perAccount[i][2],
   }));
-  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: { ...sumTotals(counted.map((c) => c.totals)), ...extremes }, combined: { series, games, recent }, steamId: steamIds[0] ?? null, steam };
+  return { range, anchor, linked, countedAt: COUNTED_AT, counted, totals: { ...sumTotals(counted.map((c) => c.totals)), ...extremes }, combined: { series, games, recent }, steamId: steamIds[0] ?? null, steam, streamer };
 }
 
 /** Steam profile data for a Steam-keyed account, when the collector has fetched it. */

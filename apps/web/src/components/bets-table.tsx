@@ -51,7 +51,7 @@ export function BetsTable({ bets, color, meta, showSite = false }: { bets: (BetR
                     <span className="inline-flex items-center gap-1.5">{rowMeta ? <CasinoLogo casino={rowMeta} size={16} className="rounded-sm" /> : null}{rowMeta?.name ?? site}</span>
                   </TableCell>
                 ) : null}
-                <TableCell><PlayerLink site={site ?? ""} id={b.player.id} name={b.player.name} avatar={b.player.avatar} admin={b.player.admin} color={rowMeta?.color ?? color} nameClassName="max-w-[5.5rem] sm:max-w-[10rem]" /></TableCell>
+                <TableCell><PlayerLink site={site ?? ""} id={b.player.id} name={b.player.name} avatar={b.player.avatar} admin={b.player.admin} streamer={b.player.streamer} color={rowMeta?.color ?? color} nameClassName="max-w-[5.5rem] sm:max-w-[10rem]" /></TableCell>
                 <TableCell>
                   {(() => {
                     const href = roundUrl(rowMeta, b.game, b.roundId);

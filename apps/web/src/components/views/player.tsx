@@ -17,6 +17,7 @@ import { Reveal, Stagger } from "@/components/reveal";
 import { TimeAgo } from "@/components/time-ago";
 import { SteamIcon } from "@/components/steam-button";
 import { SteamPanel } from "@/components/steam-panel";
+import { StreamerHeader } from "@/components/streamer-profile";
 import { gameLabel, getCasinoMeta } from "@/lib/casinos";
 import { count, money, pct } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -92,7 +93,7 @@ function Activity({ stats, range, site }: { stats: { series: AccountStats["serie
   );
 }
 
-export function PlayerView({ range, anchor, linked, countedAt, counted, totals, combined, steamId, steam }: PlayerProfile) {
+export function PlayerView({ range, anchor, linked, countedAt, counted, totals, combined, steamId, steam, streamer }: PlayerProfile) {
   const anchorMeta = getCasinoMeta(anchor.site);
   const countedKeys = new Set(counted.map((c) => key(c.account)));
   const uncounted = linked.filter((l) => !countedKeys.has(key(l)));
@@ -101,6 +102,7 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
   return (
     <Stagger className="mx-auto flex max-w-7xl flex-col gap-5" key={key(anchor)}>
       <Reveal>
+        {streamer ? <StreamerHeader anchor={anchor} account={streamer.account} profile={streamer.profile} range={range} /> : (
         <Card className="relative overflow-hidden">
           <span aria-hidden className="pointer-events-none absolute -top-24 -left-24 size-72 rounded-full blur-3xl" style={{ background: anchorMeta?.color, opacity: 0.12 }} />
           <CardContent className="flex flex-wrap items-center gap-5 py-2">
@@ -130,6 +132,7 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
             </Button>
           </CardContent>
         </Card>
+        )}
       </Reveal>
 
       <Kpis t={totals} range={range} accent={anchorMeta?.color} oneSite={sites.size <= 1} />
@@ -153,7 +156,7 @@ export function PlayerView({ range, anchor, linked, countedAt, counted, totals, 
                   <div key={key(l)} className={cn("flex flex-col gap-3 rounded-lg px-3 py-2.5 shadow-border", !isCounted && "opacity-80")}>
                     <div className="flex items-center gap-3">
                       <span className="min-w-0 flex-1">
-                        <PlayerLink site={l.site} id={l.id} name={l.handle} avatar={l.avatar} admin={l.admin} color={m?.color ?? "#888"} size={32} className="max-w-full gap-2.5" nameClassName="text-sm font-medium" />
+                        <PlayerLink site={l.site} id={l.id} name={l.handle} avatar={l.avatar} admin={l.admin} streamer={l.streamer} color={m?.color ?? "#888"} size={32} className="max-w-full gap-2.5" nameClassName="text-sm font-medium" />
                         <span className="mt-0.5 flex items-center gap-1.5 pl-[42px] text-[11px] text-muted-foreground">
                           {m ? <CasinoLogo casino={m} size={12} className="rounded-sm" /> : null}
                           {m?.name ?? l.site}
