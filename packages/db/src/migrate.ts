@@ -10,6 +10,11 @@
  * starts after this). With the timeout the table is usable between tries.
  * Files must be idempotent (IF NOT EXISTS) since a failed try rolls back
  * the whole file.
+ *
+ * It runs twice per deploy: as the web service's Railway pre-deploy command
+ * (so new pages never go live against an old schema) and on collector boot.
+ * A session advisory lock makes concurrent runs take turns; the second one
+ * then finds everything applied.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -24,6 +29,10 @@ const sql = postgres(url, { max: 1, onnotice: () => {} });
 const LOCK_TIMEOUT = process.env.MIGRATE_LOCK_TIMEOUT ?? "5s";
 const RETRY_FOR_MS = Number(process.env.MIGRATE_RETRY_MINUTES ?? 15) * 60_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Arbitrary constant key shared by every run of this migrator. No lock_timeout is set yet, so this waits for another run to finish.
+const ADVISORY_KEY = 7271801;
+await sql`SELECT pg_advisory_lock(${ADVISORY_KEY})`;
 
 await sql`CREATE TABLE IF NOT EXISTS _migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`;
 const applied = new Set((await sql`SELECT name FROM _migrations`).map((r) => r.name as string));
@@ -48,8 +57,9 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
       await sleep(3_000);
     }
   }
-  await sql`INSERT INTO _migrations (name) VALUES (${file})`;
+  await sql`INSERT INTO _migrations (name) VALUES (${file}) ON CONFLICT DO NOTHING`;
   console.log("ok");
 }
+await sql`SELECT pg_advisory_unlock(${ADVISORY_KEY})`;
 await sql.end();
 console.log("migrations up to date");

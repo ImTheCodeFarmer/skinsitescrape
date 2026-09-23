@@ -714,7 +714,14 @@ Three services in one project:
    `SITES=rustypot`, `PROXY_URL` (the `low_country-US` pool works with hunting; try
    without a proxy first and keep it only if Railway's own IP is challenged).
    ~256 MB RAM is plenty. Migrations run on boot.
-3. **web** — root directory `apps/web`, Nixpacks default. Env: `DATABASE_URL`,
+3. **web** — root directory `/`, config file `/apps/web/railway.json`
+   (Dockerfile `apps/web/Dockerfile`). Its pre-deploy command runs the
+   migrations from inside the new image before that build takes traffic, so
+   pages never query columns that do not exist yet; if a migration fails
+   (for example, it cannot get its lock within `MIGRATE_RETRY_MINUTES`), the
+   deploy fails and the previous build keeps serving. The collector also
+   migrates on boot; an advisory lock makes the two runs take turns.
+   Env: `DATABASE_URL`,
    `SESSION_SECRET` (any long random string; signs the login cookie) and
    `NEXT_PUBLIC_SITE_URL` (the site's public URL, so Steam sends users back
    to the right host).
