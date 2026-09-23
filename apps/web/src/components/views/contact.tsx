@@ -81,7 +81,6 @@ export function ContactView({ siteKey, defaultName }: { siteKey: string | null; 
               <CheckCircle2 className="size-10 text-emerald-400" strokeWidth={1.5} />
               <h2 className="text-lg font-medium">Message sent</h2>
               <p className="max-w-sm text-sm text-muted-foreground">Thanks for reaching out. We will get back to you soon.</p>
-              <Button variant="outline" size="sm" className="mt-2" onClick={() => setSent(false)}>Send another</Button>
             </CardContent>
           ) : (
             <>
