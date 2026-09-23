@@ -1,6 +1,6 @@
 # Railway: root directory = repo root, dockerfile path = apps/web/Dockerfile,
-# pre-deploy command `node db/dist/migrate.js` (apps/web/railway.json), so the
-# schema is migrated before a new build takes traffic.
+# pre-deploy command `node db/dist/migrate.js` (set in the service's Deploy
+# settings), so the schema is migrated before a new build takes traffic.
 FROM node:22-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.11.0 --activate
 WORKDIR /repo

@@ -714,8 +714,8 @@ Three services in one project:
    `SITES=rustypot`, `PROXY_URL` (the `low_country-US` pool works with hunting; try
    without a proxy first and keep it only if Railway's own IP is challenged).
    ~256 MB RAM is plenty. Migrations run on boot.
-3. **web** — root directory `/`, config file `/apps/web/railway.json`
-   (Dockerfile `apps/web/Dockerfile`). Its pre-deploy command runs the
+3. **web** — root directory `/`, Dockerfile `apps/web/Dockerfile`,
+   pre-deploy command `node db/dist/migrate.js` (Settings → Deploy). It runs the
    migrations from inside the new image before that build takes traffic, so
    pages never query columns that do not exist yet; if a migration fails
    (for example, it cannot get its lock within `MIGRATE_RETRY_MINUTES`), the
