@@ -19,7 +19,8 @@ export function parseRange(v: string | string[] | undefined): Range {
 }
 
 /** Sites that have a collector row, i.e. real data. */
-export async function trackedSites(): Promise<string[]> {
+export const trackedSites = () => memo("tracked", 60_000, trackedSitesQuery);
+async function trackedSitesQuery(): Promise<string[]> {
   const r = await rows(sql`SELECT DISTINCT site FROM bets_daily UNION SELECT site FROM collector_status`);
   return r.map((x) => String(x.site));
 }
@@ -78,7 +79,8 @@ function window(range: Range, offsetWindows = 0) {
 }
 
 /** Time series for one site (or all sites when `site` is null). */
-export async function series(site: string | null, range: Range, offsetWindows = 0): Promise<Point[]> {
+export const series = (site: string | null, range: Range, offsetWindows = 0) => memo(`series:${site ?? "all"}:${range}:${offsetWindows}`, ttlFor(range), () => seriesQuery(site, range, offsetWindows));
+async function seriesQuery(site: string | null, range: Range, offsetWindows: number): Promise<Point[]> {
   const { from, to } = window(range, offsetWindows);
   return seriesBetween(site, range === 1, from, to);
 }
@@ -136,7 +138,8 @@ async function totals(site: string | null, range: Range, offsetWindows = 0) {
   return { wagered: n(r?.wagered), payout: n(r?.payout), players: n(r?.players), bets: n(r?.bets), playerWins: n(r?.won_profit), playerLosses: n(r?.lost_wagered) };
 }
 
-export async function summary(site: string | null, range: Range): Promise<Summary> {
+export const summary = (site: string | null, range: Range) => memo(`summary:${site ?? "all"}:${range}`, ttlFor(range), () => summaryQuery(site, range));
+async function summaryQuery(site: string | null, range: Range): Promise<Summary> {
   const [cur, prev, pts] = await Promise.all([totals(site, range, 0), totals(site, range, 1), series(site, range)]);
   const net = cur.wagered - cur.payout;
   const prevNet = prev.wagered - prev.payout;
@@ -156,7 +159,8 @@ export async function summary(site: string | null, range: Range): Promise<Summar
   };
 }
 
-export async function topGames(site: string | null, range: Range): Promise<GameStat[]> {
+export const topGames = (site: string | null, range: Range) => memo(`games:${site ?? "all"}:${range}`, ttlFor(range), () => topGamesQuery(site, range));
+async function topGamesQuery(site: string | null, range: Range): Promise<GameStat[]> {
   const { from, to } = window(range);
   const siteFilter = site ? sql`AND site = ${site}` : sql``;
   const r =
@@ -172,7 +176,8 @@ export async function topGames(site: string | null, range: Range): Promise<GameS
   return r.map((x) => ({ name: gameLabel(String(x.game)), wagered: n(x.wagered), plays: n(x.plays), net: n(x.net) }));
 }
 
-export async function topPlayers(site: string | null, range: Range, limit = 10): Promise<(PlayerStat & { site: string })[]> {
+export const topPlayers = (site: string | null, range: Range, limit = 10) => memo(`players:${site ?? "all"}:${range}:${limit}`, ttlFor(range), () => topPlayersQuery(site, range, limit));
+async function topPlayersQuery(site: string | null, range: Range, limit: number): Promise<(PlayerStat & { site: string })[]> {
   const { from, to } = window(range);
   const siteFilter = site ? sql`AND b.site = ${site}` : sql``;
   const r =
@@ -213,7 +218,8 @@ export async function topPlayers(site: string | null, range: Range, limit = 10):
 }
 
 /** Last 14 days of daily wager for a sidebar sparkline. */
-async function sparkline(site: string): Promise<number[]> {
+const sparkline = (site: string) => memo(`spark:${site}`, 300_000, () => sparklineQuery(site));
+async function sparklineQuery(site: string): Promise<number[]> {
   const r = await rows(sql`
     SELECT d::date AS day, coalesce(sum(wagered_usd), 0) w
     FROM generate_series(now()::date - 13, now()::date, '1 day') d

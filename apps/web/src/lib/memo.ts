@@ -40,3 +40,6 @@ export async function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>):
 
 /** Cache lifetime by range: long ranges move by a rounding error per minute. */
 export const ttlFor = (range: number) => (range === 1 ? 15_000 : range === 7 ? 60_000 : 300_000);
+
+/** Resolves once every refresh in flight has landed, so a caller can pace its own work. */
+export const settled = () => Promise.allSettled([...store.values()].map((e) => e.inflight).filter(Boolean));
