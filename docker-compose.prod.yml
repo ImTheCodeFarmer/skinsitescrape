@@ -1,0 +1,76 @@
+# Production stack for Dokploy (Compose service, compose path = docker-compose.prod.yml).
+#
+# Env vars go in the Dokploy Environment tab, which writes them to .env next to
+# this file. POSTGRES_PASSWORD is required; everything else is as in .env.example.
+# DATABASE_URL is built here, so leave it out of the Environment tab.
+#
+# Add the public domain in Dokploy's Domains tab on the `web` service, port 3000.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://casino:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/casino
+
+services:
+  db:
+    # Pinned to the version on Railway (PG 16.15, TimescaleDB 2.30.0); dump/restore needs a matching extension version.
+    image: timescale/timescaledb:2.30.0-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: casino
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: casino
+      # timescaledb-tune sizes Postgres on first init; leave headroom for web, collector and Dokploy on the 8 GB box.
+      TS_TUNE_MEMORY: 4GB
+      TS_TUNE_NUM_CPUS: "4"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    shm_size: 256mb
+    command: postgres -c shared_preload_libraries=timescaledb -c max_connections=50 -c dynamic_shared_memory_type=mmap -c max_wal_size=2GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casino -d casino"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *app-env
+    # Replaces Railway's pre-deploy command: migrate, then serve.
+    command: sh -c "node db/dist/migrate.js && exec node apps/web/server.js"
+    expose:
+      - "3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+  collector:
+    build:
+      context: .
+      dockerfile: apps/collector/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *app-env
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  dbdata:
